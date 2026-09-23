@@ -53,6 +53,25 @@
           kineo = bin "kineo";
           kineo-hyper = bin "kineo-hyper";
           default = kineo;
+
+          # For hacking: both programs from one terminal, debug logs on.
+          # Arguments go to kineo. Quitting kineo also stops kineo-hyper,
+          # which puts Caps Lock back.
+          dev = {
+            type = "app";
+            program = "${
+              pkgs.writeShellApplication {
+                name = "kineo-dev";
+                text = ''
+                  bin=${self.packages.${pkgs.stdenv.hostPlatform.system}.kineo}/bin
+                  "$bin/kineo-hyper" --escape &
+                  hyper=$!
+                  trap 'kill "$hyper" 2>/dev/null || true' EXIT INT TERM
+                  KINEO_LOG="''${KINEO_LOG:-debug}" "$bin/kineo" "$@"
+                '';
+              }
+            }/bin/kineo-dev";
+          };
         }
       );
 

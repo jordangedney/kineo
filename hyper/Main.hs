@@ -35,11 +35,13 @@ main = do
     let wait = kh_trusted 0 >>= \ok -> unless (ok /= 0) (threadDelay 1000000 >> wait)
     wait
 
-  ok <- kh_install_mapping
-  unless (ok /= 0) $ say "could not remap Caps Lock" >> exitFailure
-  -- From here on, always put the keyboard back the way we found it.
+  -- Handlers go in before the mapping, so there is no moment where a kill
+  -- would leave Caps Lock remapped. Restoring before anything was installed
+  -- is a no-op.
   forM_ [sigINT, sigTERM, sigHUP] $ \s ->
     installHandler s (Catch (kh_restore_mapping >> exitImmediately ExitSuccess)) Nothing
+  ok <- kh_install_mapping
+  unless (ok /= 0) $ say "could not remap Caps Lock" >> exitFailure
 
   tapped <- kh_start_tap (if escape then 1 else 0)
   unless (tapped /= 0) $ do

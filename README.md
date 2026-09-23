@@ -101,6 +101,7 @@ nix develop          # GHC 9.12, cabal, HLS, fourmolu
 cabal test           # pure core: unit and property tests
 cabal run kineo -- doctor
 nix build            # the release binary, tests included
+nix run .#dev        # kineo (debug logs) + kineo-hyper; quitting stops both
 ```
 
 The design keeps all the window-management logic pure:
