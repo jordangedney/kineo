@@ -1,0 +1,57 @@
+# Kineo configuration. Copy to ~/.config/kineo/kineo.toml and edit.
+# Every key is optional: anything left out keeps the value shown here.
+# Reload with hyper+shift+r or `kineo send reload-config`.
+
+[layout]
+gap = 12            # pixels between columns, and between windows stacked in a column
+margin = 12         # pixels between windows and the edges of the screen
+sliver = 8          # how much of an off-screen window peeks in at the screen edge
+focus = "reveal"    # "reveal": scroll just enough to show the focused window
+                    # "center": keep the focused window in the middle
+widths = [0.3333, 0.5, 0.6667, 1.0]   # presets for cycle-width, as fractions of the screen
+default-width = 0.5                   # width of newly opened windows
+
+[animation]
+duration-ms = 200   # 0 turns animation off
+fps = 120
+easing = "ease-out" # "linear", "ease-out" or "ease-in-out"
+
+# Key bindings merge with the defaults below; bind a chord to "none" to drop one.
+# Modifiers: cmd, alt, ctrl, shift, hyper (= cmd+alt+ctrl), meh (= ctrl+alt+shift).
+# `kineo commands` lists every command.
+[bindings]
+"hyper+a" = "focus-left"
+"hyper+d" = "focus-right"
+"hyper+w" = "focus-up"
+"hyper+s" = "focus-down"
+"hyper+f" = "focus-first"
+"hyper+e" = "focus-last"
+"hyper+shift+a" = "move-left"
+"hyper+shift+d" = "move-right"
+"hyper+shift+w" = "move-up"
+"hyper+shift+s" = "move-down"
+"hyper+t" = "cycle-width"
+"hyper+shift+t" = "cycle-width-back"
+"hyper+m" = "toggle-full-width"
+"hyper+c" = "center"
+"hyper+comma" = "consume"        # stack this window under the column to its left
+"hyper+period" = "expel"         # take this window out of its stack
+"hyper+space" = "toggle-float"
+"hyper+r" = "retile"
+"hyper+shift+r" = "reload-config"
+"hyper+shift+q" = "quit"
+
+# Rules are checked in order; the first whose fields all match applies.
+# Setting any rules replaces this default list.
+[[rules]]
+app = "com.apple.systempreferences"
+float = true
+
+[[rules]]
+app = "com.apple.ActivityMonitor"
+float = true
+
+# [[rules]]
+# app = "com.mitchellh.ghostty"
+# title-contains = "scratch"
+# width = 0.3333

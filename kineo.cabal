@@ -1,0 +1,112 @@
+cabal-version:   3.12
+name:            kineo
+version:         0.1.0
+synopsis:        A scrolling tiling window manager for macOS
+description:
+  Kineo arranges windows side by side on an endless horizontal strip.
+  Opening a window never resizes the ones you already have; you scroll
+  the strip instead.
+
+license:         MIT
+license-file:    LICENSE
+author:          Jordan Gedney
+maintainer:      jordangedney@gmail.com
+category:        System
+build-type:      Simple
+tested-with:     GHC ==9.12.3
+extra-doc-files: README.md
+extra-source-files:
+  cbits/*.h
+  config/kineo.toml
+
+common shared
+  default-language:   GHC2024
+  default-extensions:
+    DuplicateRecordFields
+    NoFieldSelectors
+    OverloadedRecordDot
+    OverloadedStrings
+    StrictData
+
+  ghc-options:
+    -Wall -Wcompat -Widentities -Wincomplete-record-updates
+    -Wincomplete-uni-patterns -Wredundant-constraints -Wunused-packages
+    -Wmissing-export-lists
+
+  build-depends:      base >=4.21 && <5
+
+-- The window manager itself: pure, portable, and fully testable.
+library
+  import:          shared
+  hs-source-dirs:  src
+  exposed-modules:
+    Kineo.Command
+    Kineo.Config
+    Kineo.Core
+    Kineo.Geometry
+    Kineo.Keys
+    Kineo.Layout
+    Kineo.Strip
+
+  build-depends:
+    , containers   >=0.7  && <0.9
+    , text         >=2.1  && <2.2
+    , toml-parser  >=2.0  && <2.1
+
+-- Everything that talks to macOS.
+executable kineo
+  import:           shared
+  hs-source-dirs:   app
+  main-is:          Main.hs
+  other-modules:
+    Kineo.Animator
+    Kineo.Log
+    Kineo.Platform
+    Kineo.Platform.FFI
+    Kineo.Remote
+    Kineo.Runtime
+    Paths_kineo
+
+  autogen-modules:  Paths_kineo
+  build-depends:
+    , bytestring  >=0.12 && <0.13
+    , containers
+    , directory  >=1.3 && <1.4
+    , filepath   >=1.5 && <1.6
+    , kineo
+    , network    >=3.2 && <3.3
+    , stm        >=2.5 && <2.6
+    , text
+    , time       >=1.12 && <1.15
+    , unix       >=2.8 && <2.9
+
+  c-sources:        cbits/kineo.m
+  include-dirs:     cbits
+  cc-options:       -fobjc-arc -fmodules -Wall
+  frameworks:
+    AppKit
+    ApplicationServices
+    Carbon
+    CoreGraphics
+
+  ghc-options:      -threaded -rtsopts
+
+test-suite spec
+  import:         shared
+  type:           exitcode-stdio-1.0
+  hs-source-dirs: test
+  main-is:        Main.hs
+  other-modules:
+    CoreSpec
+    Gen
+    LayoutSpec
+    StripSpec
+    ConfigSpec
+
+  build-depends:
+    , containers
+    , kineo
+    , tasty             >=1.5 && <1.6
+    , tasty-hunit       >=0.10 && <0.11
+    , tasty-quickcheck  >=0.11 && <0.12
+    , text
