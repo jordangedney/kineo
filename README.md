@@ -33,6 +33,8 @@ or with nix-darwin, as a launchd agent:
   imports = [ inputs.kineo.darwinModules.default ];
   services.kineo.enable = true;
   # services.kineo.settings = builtins.readFile ./kineo.toml;
+  services.kineo.hyper.enable = true;   # Caps Lock as hyper (see below)
+  # services.kineo.hyper.escape = true; # ...and tapped alone, Escape
 }
 ```
 
@@ -43,6 +45,19 @@ separate Spaces** (System Settings → Desktop & Dock) for multiple displays.
 
 `kineo doctor` shows what Kineo can see (permission, displays, spaces, and
 which windows it would tile) without moving anything.
+
+### Caps Lock as hyper
+
+`kineo-hyper` turns Caps Lock into hyper (cmd+alt+ctrl) while it runs:
+hold Caps Lock and press a key, and every app sees cmd+alt+ctrl+key. With
+`--escape`, tapping Caps Lock on its own sends Escape. It is a separate
+process from the window manager, so restarting Kineo never takes your
+keyboard with it, and it needs its own Accessibility grant.
+
+It remaps Caps Lock to F18 in the HID layer (like `hidutil`) and puts back
+whatever mapping was there before when it exits. If it is killed with
+`kill -9`, Caps Lock does nothing until you run it again or restart
+(`hidutil property --set '{"UserKeyMapping":[]}'` also clears it).
 
 ## Use
 

@@ -47,6 +47,13 @@ touches the OS is in the executable (`app/`, `cbits/`).
 - `cbits/kineo.{h,m}`: the entire macOS surface as a plain-C API. ARC, and
   private symbols (SkyLight, `_AXUIElementGetWindow`) are resolved with
   `dlsym`. `app/Kineo/Platform/FFI.hsc` binds it with hsc2hs offsets.
+- `kineo-hyper` (`hyper/Main.hs`, `cbits/hyper.m`): a separate executable,
+  on purpose, so the keyboard never depends on the window manager. It maps
+  Caps Lock → F18 via `IOHIDEventSystemClient` "UserKeyMapping" (restored
+  on exit), and an HID-level event tap adds cmd+alt+ctrl to key events while
+  F18 is held. The tap callback must stay pure C and fast; macOS disables
+  slow taps (the callback re-enables on `kCGEventTapDisabledByTimeout`).
+  Don't test it by injecting key events: they reach the frontmost app.
 
 ## Conventions
 

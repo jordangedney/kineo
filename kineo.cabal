@@ -91,6 +91,23 @@ executable kineo
 
   ghc-options:      -threaded -rtsopts
 
+-- Caps Lock as hyper. A separate process so the keyboard never depends on
+-- the window manager being up.
+executable kineo-hyper
+  import:           shared
+  hs-source-dirs:   hyper
+  main-is:          Main.hs
+  build-depends:    unix
+  c-sources:        cbits/hyper.m
+  include-dirs:     cbits
+  cc-options:       -fobjc-arc -fmodules -Wall
+  frameworks:
+    ApplicationServices
+    Foundation
+    IOKit
+
+  ghc-options:      -threaded
+
 test-suite spec
   import:         shared
   type:           exitcode-stdio-1.0

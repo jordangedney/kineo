@@ -22,6 +22,7 @@
           ./app
           ./cbits
           ./config
+          ./hyper
           ./src
           ./test
         ];
@@ -39,13 +40,21 @@
         default = kineo;
       });
 
-      apps = forAllSystems (pkgs: rec {
-        kineo = {
-          type = "app";
-          program = "${self.packages.${pkgs.stdenv.hostPlatform.system}.kineo}/bin/kineo";
-        };
-        default = kineo;
-      });
+      # Both programs come from the one package.
+      apps = forAllSystems (
+        pkgs:
+        let
+          bin = name: {
+            type = "app";
+            program = "${self.packages.${pkgs.stdenv.hostPlatform.system}.kineo}/bin/${name}";
+          };
+        in
+        rec {
+          kineo = bin "kineo";
+          kineo-hyper = bin "kineo-hyper";
+          default = kineo;
+        }
+      );
 
       devShells = forAllSystems (
         pkgs:
