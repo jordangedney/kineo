@@ -71,6 +71,8 @@ bool kn_query_window(uint32_t wid, kn_window_info *out);
 bool kn_window_frame(uint32_t wid, kn_rect *out);
 void kn_window_spaces(const uint32_t *wids, uint64_t *out, int n);
 void kn_window_focus(uint32_t wid);
+void kn_window_close(uint32_t wid);  // presses the close button
+void kn_focus_nothing(void);         // makes Kineo, which has no windows, frontmost
 void kn_set_hotkeys(const kn_hotkey *keys, int n);
 
 // Flags for kn_window_set_frame.

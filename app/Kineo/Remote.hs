@@ -12,7 +12,7 @@ import Control.Concurrent (forkIO)
 import Control.Exception (SomeException, bracket, try)
 import Control.Monad (forever, unless, void)
 import Data.ByteString.Char8 qualified as B
-import Kineo.Command (Command, parseCommand)
+import Kineo.Command (Command (..), parseCommand)
 import Network.Socket
 import Network.Socket.ByteString (recv, sendAll)
 import System.Directory (removePathForcibly)
@@ -55,6 +55,9 @@ serve run = do
       Nothing -> ([], b)
       Just i -> (B.lines (B.take i b), B.drop (i + 1) b)
     answer conn line = case parseCommand (B.unpack line) of
+      -- Running programs is for key bindings only, so the socket can't
+      -- become a way to run arbitrary commands.
+      Just (Exec _) -> sendAll conn "error: exec is only allowed in key bindings\n"
       Just c -> run c >> sendAll conn "ok\n"
       Nothing -> sendAll conn ("error: unknown command " <> B.pack (show (B.unpack line)) <> "\n")
 

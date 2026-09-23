@@ -1,5 +1,6 @@
 module CoreSpec (tests) where
 
+import Data.Foldable (toList)
 import Data.List (nub)
 import Data.Map.Strict qualified as Map
 import Gen
@@ -7,7 +8,7 @@ import Kineo.Command (Command (..))
 import Kineo.Config (Config (..), defaultConfig)
 import Kineo.Core
 import Kineo.Geometry (Rect (..))
-import Kineo.Layout (Placement (..))
+import Kineo.Layout (Params (..), Placement (..))
 import Kineo.Strip (Dir (..), WindowId)
 import Kineo.Strip qualified as Strip
 import Test.Tasty
@@ -26,10 +27,17 @@ world :: [Event] -> World
 world = fst . run
 
 order :: World -> [[WindowId]]
-order w = maybe [] (\sp -> map (\c -> foldr (:) [] c.stack) (Strip.columns sp.strip)) (Map.lookup 1 w.spaces)
+order w = maybe [] (\sp -> map (\c -> foldr (:) [] c.stack) (Strip.columns (activeWorkspace sp).strip)) (Map.lookup 1 w.spaces)
+
+-- | The windows of each workspace on space 1, and which one is active.
+stacks :: World -> ([[WindowId]], Int)
+stacks w = maybe ([], 0) (\sp -> (map (Strip.windows . (.strip)) (toList sp.workspaces), sp.active)) (Map.lookup 1 w.spaces)
 
 arranged :: [Effect] -> [WindowId]
 arranged es = concat [map (.window) ps | Arrange ps <- es]
+
+contains :: [Effect] -> Effect -> Assertion
+contains es e = e `elem` es @? "expected " ++ show e ++ " in " ++ show es
 
 open :: [WindowId] -> [Event]
 open = map (WindowAppeared . window)
@@ -71,22 +79,77 @@ tests =
         let widthAfter n = do
               let w = world (open [1] ++ [WindowFocused 1] ++ replicate n (Command CycleWidth))
               sp <- Map.lookup 1 w.spaces
-              (.width) <$> Strip.columnOf 1 sp.strip
+              (.width) <$> Strip.columnOf 1 (activeWorkspace sp).strip
         map widthAfter [0, 1, 2, 3] @?= map Just [0.5, 0.6667, 1, 0.3333]
     , testCase "toggle-full-width remembers the old width" $ do
         let w = world (open [1] ++ [WindowFocused 1, Command ToggleFullWidth, Command ToggleFullWidth])
-        ((.width) <$> (Strip.columnOf 1 . (.strip) =<< Map.lookup 1 w.spaces)) @?= Just 0.5
+        ((.width) <$> (Strip.columnOf 1 . (.strip) . activeWorkspace =<< Map.lookup 1 w.spaces)) @?= Just 0.5
     , testCase "resizing a window by hand changes its column width" $ do
         let w = world (open [1] ++ [WindowResized 1 400])
-        fmap (< 0.5) ((.width) <$> (Strip.columnOf 1 . (.strip) =<< Map.lookup 1 w.spaces)) @?= Just True
+        fmap (< 0.5) ((.width) <$> (Strip.columnOf 1 . (.strip) . activeWorkspace =<< Map.lookup 1 w.spaces)) @?= Just True
     , testCase "a window dragged to another space moves strips" $ do
         let w = world (open [1, 2] ++ [Reconfigured [laptop, external] (Map.fromList [(2, 2)])])
         order w @?= [[1]]
-        (Strip.windows . (.strip) <$> Map.lookup 2 w.spaces) @?= Just [2]
+        (Strip.windows . (.strip) . activeWorkspace <$> Map.lookup 2 w.spaces) @?= Just [2]
     , testCase "toggle-float takes a window out and puts it back" $ do
         let w = world (open [1, 2] ++ [WindowFocused 2, Command ToggleFloat])
         order w @?= [[1]]
         order (fst (step cfg (Command ToggleFloat) w)) @?= [[1], [2]]
+    , testCase "move-up at the top of a column starts a workspace above" $ do
+        let w = world (open [1, 2, 3] ++ [WindowFocused 2, Command (Move DirUp)])
+        stacks w @?= ([[2], [1, 3]], 0)
+        w.focused @?= Just 2
+    , testCase "focus-down and focus-up cross between workspaces" $ do
+        let (w, es) = run (open [1, 2, 3] ++ [WindowFocused 2, Command (Move DirUp), Command (Focus DirDown)])
+        (w.focused, snd (stacks w)) @?= (Just 1, 1)
+        FocusWindow 1 `elem` es @? "expected FocusWindow 1 in " ++ show es
+        let (w', es') = step cfg (Command (Focus DirUp)) w
+        (w'.focused, snd (stacks w')) @?= (Just 2, 0)
+        FocusWindow 2 `elem` es' @? "expected FocusWindow 2 in " ++ show es'
+    , testCase "focus-up moves within a column before leaving the workspace" $ do
+        let w = world (open [1, 2, 3] ++ [WindowFocused 3, Command (Move DirUp), Command (Focus DirDown), Command Consume])
+        stacks w @?= ([[3], [1, 2]], 1)
+        let w' = fst (step cfg (Command (Focus DirUp)) w)
+        w'.focused @?= Just 1
+        (fst (step cfg (Command (Focus DirUp)) w')).focused @?= Just 3
+    , testCase "focus-down past the last workspace goes to an empty one" $ do
+        let (w, es) = run (open [1, 2] ++ [WindowFocused 2, Command (Focus DirDown)])
+        (w.focused, stacks w) @?= (Nothing, ([[1, 2], []], 1))
+        es `contains` FocusNothing
+        arranged es @?= [1, 2]
+        -- Still there after unrelated events, and no further to go.
+        let (w', es') = foldl' (\(x, _) e -> step cfg e x) (w, []) [Relayout, Command (Focus DirDown), Command (Focus DirLeft)]
+        stacks w' @?= ([[1, 2], []], 1)
+        [x | x@(FocusWindow _) <- es'] @?= []
+    , testCase "focus-up past the first workspace goes to an empty one" $
+        stacks (world (open [1] ++ [WindowFocused 1, Command (Focus DirUp)])) @?= ([[], [1]], 0)
+    , testCase "leaving an empty workspace drops it" $ do
+        let (w, es) = run (open [1, 2] ++ [WindowFocused 2, Command (Focus DirDown), Command (Focus DirUp)])
+        (w.focused, stacks w) @?= (Just 2, ([[1, 2]], 0))
+        es `contains` FocusWindow 2
+    , testCase "a window opened on an empty workspace stays there" $ do
+        let w = world (open [1, 2] ++ [WindowFocused 2, Command (Focus DirDown), WindowAppeared (window 3), WindowFocused 3])
+        (w.focused, stacks w) @?= (Just 3, ([[1, 2], [3]], 1))
+    , testCase "close closes the focused window" $
+        snd (run (open [1, 2] ++ [WindowFocused 1, Command CloseWindow])) `contains` Close 1
+    , testCase "exec runs its command" $
+        snd (run [Command (Exec "open -a Foo")]) @?= [Spawn "open -a Foo"]
+    , testCase "other workspaces are parked below the display" $ do
+        let (_, es) = run (open [1, 2, 3] ++ [WindowFocused 2, Command (Move DirUp)])
+            ps = concat [p | Arrange p <- es]
+            parked = [p.window | p <- ps, not p.onScreen, p.rect.y == 900 - cfg.layout.sliver]
+        parked @?= [1, 3]
+    , testCase "closing the last window of a workspace returns to the one above" $ do
+        let (w, es) = run (open [1, 2, 3] ++ [WindowFocused 3, Command (Move DirDown), WindowGone 3])
+        (w.focused, stacks w) @?= (Just 2, ([[1, 2]], 0))
+        FocusWindow 2 `elem` es @? "expected FocusWindow 2 in " ++ show es
+    , testCase "focusing a window on another workspace brings it on screen" $
+        snd (stacks (world (open [1, 2, 3] ++ [WindowFocused 3, Command (Move DirDown), WindowFocused 1]))) @?= 0
+    , testCase "a window alone on its workspace does not start another" $
+        stacks (world (open [1] ++ [WindowFocused 1, Command (Move DirDown)])) @?= ([[1]], 0)
+    , testCase "new windows open on the active workspace" $
+        stacks (world (open [1, 2, 3] ++ [WindowFocused 3, Command (Move DirDown), WindowAppeared (window 4)]))
+          @?= ([[1, 2], [3, 4]], 1)
     , testCase "every window on a shown space is placed exactly once" $ do
         let (_, es) = run (open [1 .. 6])
         let ws = arranged es

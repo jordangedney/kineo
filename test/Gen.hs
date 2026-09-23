@@ -9,6 +9,7 @@ module Gen
   , invariant
   ) where
 
+import Data.Foldable (toList)
 import Data.List (nub)
 import Data.List.NonEmpty (NonEmpty (..))
 import Data.Map.Strict qualified as Map
@@ -104,7 +105,7 @@ genEvent =
 -- | What must hold after any sequence of events.
 invariant :: World -> Either String ()
 invariant w = do
-  let inStrips = [(sid, wid) | (sid, sp) <- Map.toList w.spaces, wid <- Strip.windows sp.strip]
+  let inStrips = [(sid, wid) | (sid, sp) <- Map.toList w.spaces, ws <- toList sp.workspaces, wid <- Strip.windows ws.strip]
   mapM_
     ( \(wid, t) -> do
         let homes = [sid | (sid, x) <- inStrips, x == wid]
@@ -118,8 +119,20 @@ invariant w = do
     (\(_, wid) -> if Map.member wid w.windows then pure () else Left ("untracked window " ++ show wid ++ " in a strip"))
     inStrips
   mapM_
-    (\sp -> if sp.scroll >= 0 then pure () else Left ("negative scroll " ++ show sp.scroll))
-    (Map.elems w.spaces)
+    (\ws -> if ws.scroll >= 0 then pure () else Left ("negative scroll " ++ show ws.scroll))
+    (concatMap (toList . (.workspaces)) (Map.elems w.spaces))
+  mapM_
+    ( \(sid, sp) -> do
+        let n = length sp.workspaces
+            emptyIdle = [i | (i, ws) <- zip [0 ..] (toList sp.workspaces), i /= sp.active, null (Strip.windows ws.strip)]
+        if n >= 1 && sp.active >= 0 && sp.active < n
+          then pure ()
+          else Left ("space " ++ show sid ++ " has active workspace " ++ show sp.active ++ " of " ++ show n)
+        if null emptyIdle
+          then pure ()
+          else Left ("space " ++ show sid ++ " keeps empty workspaces " ++ show emptyIdle)
+    )
+    (Map.toList w.spaces)
   case w.focused of
     Just f | not (Map.member f w.windows) -> Left ("focused window " ++ show f ++ " is not tracked")
     _ -> pure ()

@@ -1,0 +1,10 @@
+{
+  "Profiles": [
+    {
+      "Name": "Kineo",
+      "Guid": "kineo-no-title-bar",
+      "Dynamic Profile Parent Name": "Default",
+      "Window Type": 12
+    }
+  ]
+}

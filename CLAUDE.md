@@ -31,9 +31,19 @@ touches the OS is in the executable (`app/`, `cbits/`).
   Off-screen windows are parked at the display edge with a `sliver` visible,
   and never overlap a neighbouring display.
 - `Kineo.Core`: `step :: Config -> Event -> World -> (World, [Effect])`.
-  All window-management policy lives here. Invariant (property-tested in
-  `test/CoreSpec.hs`): every non-floating tracked window is in exactly one
-  strip, the one for its space.
+  All window-management policy lives here. A macOS space holds a vertical
+  stack of `Workspace`s (strip, scroll, last focus); only the active one is
+  laid out, the rest are `stow`ed below the display. Focus/move up and down
+  cross workspaces at the end of a column, and focus past either end goes
+  to a new empty workspace (`World.blankFocus`; Kineo activates itself so
+  no parked window keeps the keyboard). `tidy` drops empty inactive
+  workspaces and leaves an active one whose windows all went away, unless
+  the user went there empty on purpose. Windows can't be parked above the
+  screen: macOS clamps them below the menu bar. `exec` commands run a
+  shell command and are refused over the socket. Invariants
+  (property-tested in `test/CoreSpec.hs`, checked in `test/Gen.hs`): every
+  non-floating tracked window is in exactly one strip, in a workspace of
+  its space; a space has at least one workspace and no empty inactive one.
 - `Kineo.Config` / `Keys` / `Command`: TOML via `toml-parser`, chords like
   `hyper+shift+a` (hyper = cmd+alt+ctrl), and stable kebab-case command
   names shared by key bindings and `kineo send`.

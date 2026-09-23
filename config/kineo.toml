@@ -40,6 +40,11 @@ easing = "ease-out" # "linear", "ease-out" or "ease-in-out"
 "hyper+r" = "retile"
 "hyper+shift+r" = "reload-config"
 "hyper+shift+q" = "quit"
+"hyper+delete" = "close"         # close the focused window, as its close button would
+# "exec" runs a shell command. This one opens an iTerm window with the
+# "Kineo" profile if there is one: copy config/iterm-profile.json to
+# ~/Library/Application Support/iTerm2/DynamicProfiles/ for no title bar.
+"hyper+return" = "exec osascript -e 'if application \"iTerm\" is running then' -e 'tell application \"iTerm\"' -e 'try' -e 'create window with profile \"Kineo\"' -e 'on error' -e 'create window with default profile' -e 'end try' -e 'end tell' -e 'end if' -e 'tell application \"iTerm\" to activate'"
 
 # Rules are checked in order; the first whose fields all match applies.
 # Setting any rules replaces this default list.

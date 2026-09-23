@@ -17,6 +17,8 @@ module Kineo.Platform.FFI
   , kn_window_frame
   , kn_window_spaces
   , kn_window_focus
+  , kn_window_close
+  , kn_focus_nothing
   , kn_set_hotkeys
   , kn_window_set_frame
   ) where
@@ -122,5 +124,7 @@ foreign import ccall safe "kn_query_window" kn_query_window :: Word32 -> Ptr CWi
 foreign import ccall safe "kn_window_frame" kn_window_frame :: Word32 -> Ptr CRect -> IO CBool
 foreign import ccall safe "kn_window_spaces" kn_window_spaces :: Ptr Word32 -> Ptr Word64 -> CInt -> IO ()
 foreign import ccall safe "kn_window_focus" kn_window_focus :: Word32 -> IO ()
+foreign import ccall safe "kn_window_close" kn_window_close :: Word32 -> IO ()
+foreign import ccall safe "kn_focus_nothing" kn_focus_nothing :: IO ()
 foreign import ccall safe "kn_set_hotkeys" kn_set_hotkeys :: Ptr CHotkey -> CInt -> IO ()
 foreign import ccall safe "kn_window_set_frame" kn_window_set_frame :: Word32 -> Ptr CRect -> Int32 -> IO CInt

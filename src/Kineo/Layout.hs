@@ -14,6 +14,7 @@ module Kineo.Layout
   , spans
   , scrollFor
   , place
+  , stow
   , unpark
   ) where
 
@@ -94,8 +95,28 @@ scrollFor p mode usable fracs focus prev = clamp wanted
 -- not let a window leave the screen entirely, and with separate Spaces a
 -- window that overlaps another display more than its own jumps to it.
 place :: Params -> Rect -> Rect -> [Rect] -> Double -> Strip -> [Placement]
-place p full visible others scroll strip =
-  concat (zipWith placeColumn cols (spans p usable (map (.width) cols)))
+place p full visible others scroll strip = map settle (rects p visible scroll strip)
+  where
+    settle (wid, r)
+      | r.x >= full.x - 1 && right r <= right full + 1 = Placement wid r True
+      -- Partly visible is fine, but only if it reaches past the margin into
+      -- the usable area; a few pixels in the margin is just clutter.
+      | shownWidth r > p.margin + p.sliver && not (any (intersects r) others) = Placement wid r True
+      | otherwise = Placement wid (park p full others False r) False
+
+    shownWidth r = min (right r) (right full) - max r.x full.x
+
+-- | Placements for a strip that is not being shown: the windows of a
+-- workspace other than the active one. Every window is parked below the
+-- display, under where it would otherwise be, so switching workspaces slides
+-- it up into place.
+stow :: Params -> Rect -> Rect -> [Rect] -> Double -> Strip -> [Placement]
+stow p full visible others scroll strip =
+  [Placement wid (park p full others True r) False | (wid, r) <- rects p visible scroll strip]
+
+-- | Where each window of a strip goes, before parking.
+rects :: Params -> Rect -> Double -> Strip -> [(WindowId, Rect)]
+rects p visible scroll strip = concat (zipWith placeColumn cols (spans p usable (map (.width) cols)))
   where
     cols = columns strip
     usable = usableWidth p visible
@@ -107,27 +128,21 @@ place p full visible others scroll strip =
           n = fromIntegral (length ws)
           rh = (height - (n - 1) * p.gap) / n
           x0 = visible.x + p.margin + sx - scroll
-       in [ settle wid (Rect x0 (top + i * (rh + p.gap)) cw rh)
-          | (i, wid) <- zip [0 ..] ws
-          ]
+       in [(wid, Rect x0 (top + i * (rh + p.gap)) cw rh) | (i, wid) <- zip [0 ..] ws]
 
-    settle wid r
-      | r.x >= full.x - 1 && right r <= right full + 1 = Placement wid r True
-      -- Partly visible is fine, but only if it reaches past the margin into
-      -- the usable area; a few pixels in the margin is just clutter.
-      | shownWidth r > p.margin + p.sliver && not (any (intersects r) others) = Placement wid r True
-      | otherwise = Placement wid (park r) False
-
-    shownWidth r = min (right r) (right full) - max r.x full.x
-
-    park r =
-      let beside
-            | centerX r < centerX full = r {x = full.x - r.w + p.sliver}
-            | otherwise = r {x = right full - p.sliver}
-          below = beside {x = max full.x (min beside.x (right full - r.w)), y = bottom full - p.sliver}
-       in case filter (\c -> not (any (intersects c) others)) [beside, below] of
-            (c : _) -> c
-            [] -> beside
+-- | Park a window at the edge of a display with a 'sliver' showing: beside
+-- it on the nearer side, or along the bottom, whichever is preferred and
+-- does not touch another display.
+park :: Params -> Rect -> [Rect] -> Bool -> Rect -> Rect
+park p full others preferBelow r =
+  let beside
+        | centerX r < centerX full = r {x = full.x - r.w + p.sliver}
+        | otherwise = r {x = right full - p.sliver}
+      below = r {x = max full.x (min r.x (right full - r.w)), y = bottom full - p.sliver}
+      order = if preferBelow then [below, beside] else [beside, below]
+   in case filter (\c -> not (any (intersects c) others)) order of
+        (c : _) -> c
+        [] -> beside
 
 -- | Pull a rectangle fully inside an area, for handing windows back to the
 -- user when the window manager exits.

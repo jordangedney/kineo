@@ -12,6 +12,8 @@ module Kineo.Platform
   , windowFrame
   , windowSpaces
   , focusWindow
+  , closeWindow
+  , focusNothing
   , setHotkeys
   , setFrame
   ) where
@@ -139,6 +141,15 @@ windowSpaces wids = withArrayLen wids $ \n ws -> allocaArray n $ \out -> do
 
 focusWindow :: WindowId -> IO ()
 focusWindow = kn_window_focus
+
+-- | Close a window as its close button would, so apps can still ask about
+-- unsaved changes.
+closeWindow :: WindowId -> IO ()
+closeWindow = kn_window_close
+
+-- | Leave no window with keyboard focus.
+focusNothing :: IO ()
+focusNothing = kn_focus_nothing
 
 -- | Register global hotkeys as @(key code, Carbon modifier mask)@; a press
 -- arrives as 'RawHotkey' with the index into this list. Replaces any

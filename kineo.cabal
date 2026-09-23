@@ -75,6 +75,7 @@ executable kineo
     , filepath   >=1.5 && <1.6
     , kineo
     , network    >=3.2 && <3.3
+    , process
     , stm        >=2.5 && <2.6
     , text
     , time       >=1.12 && <1.15

@@ -72,6 +72,16 @@ defaultConfig =
         ]
     }
 
+-- | A new iTerm window, using the profile named \"Kineo\" when there is
+-- one (config/iterm-profile.json: no title bar). Launching iTerm opens its
+-- own first window, so only a running iTerm is asked for another.
+newTerminal :: String
+newTerminal =
+  "osascript -e 'if application \"iTerm\" is running then' -e 'tell application \"iTerm\"'"
+    ++ " -e 'try' -e 'create window with profile \"Kineo\"' -e 'on error'"
+    ++ " -e 'create window with default profile' -e 'end try' -e 'end tell' -e 'end if'"
+    ++ " -e 'tell application \"iTerm\" to activate'"
+
 -- | Hyper is cmd+alt+ctrl. WASD moves focus; adding shift moves the window.
 defaultBindings :: Map Chord Command
 defaultBindings =
@@ -98,6 +108,8 @@ defaultBindings =
         , ("hyper+r", Retile)
         , ("hyper+shift+r", ReloadConfig)
         , ("hyper+shift+q", Quit)
+        , ("hyper+return", Exec newTerminal)
+        , ("hyper+delete", CloseWindow)
         ]
     ]
   where

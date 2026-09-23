@@ -23,9 +23,13 @@ data Command
   | Consume
   | Expel
   | ToggleFloat
+  | CloseWindow
   | Retile
   | ReloadConfig
   | Quit
+  | -- | Run a shell command, such as opening a terminal. Written
+    -- @exec \<command\>@; accepted from key bindings but not from the socket.
+    Exec String
   deriving stock (Eq, Show)
 
 allCommands :: [Command]
@@ -33,7 +37,7 @@ allCommands =
   map Focus dirs
     ++ [FocusFirst, FocusLast]
     ++ map Move dirs
-    ++ [CycleWidth, CycleWidthBack, ToggleFullWidth, CenterColumn, Consume, Expel, ToggleFloat, Retile, ReloadConfig, Quit]
+    ++ [CycleWidth, CycleWidthBack, ToggleFullWidth, CenterColumn, Consume, Expel, ToggleFloat, CloseWindow, Retile, ReloadConfig, Quit]
   where
     dirs = [minBound .. maxBound]
 
@@ -50,16 +54,20 @@ commandName = \case
   Consume -> "consume"
   Expel -> "expel"
   ToggleFloat -> "toggle-float"
+  CloseWindow -> "close"
   Retile -> "retile"
   ReloadConfig -> "reload-config"
   Quit -> "quit"
+  Exec s -> "exec " ++ s
   where
     dirName = \case DirLeft -> "left"; DirRight -> "right"; DirUp -> "up"; DirDown -> "down"
 
 -- | Case-insensitive; spaces and underscores count as dashes, so
--- @"Focus Left"@ parses too.
+-- @"Focus Left"@ parses too. @exec@ keeps the rest of the line as written.
 parseCommand :: String -> Maybe Command
-parseCommand s = lookup (normalise s) [(commandName c, c) | c <- allCommands]
+parseCommand s = case break isSpace (trim s) of
+  (verb, rest) | map toLower verb == "exec", not (null (trim rest)) -> Just (Exec (trim rest))
+  _ -> lookup (normalise s) [(commandName c, c) | c <- allCommands]
   where
     normalise = map dash . map toLower . trim
     dash c = if c == ' ' || c == '_' then '-' else c

@@ -73,13 +73,39 @@ Default bindings (hyper = cmd+alt+ctrl):
 | hyper + c | centre the focused column |
 | hyper + comma / period | stack into the left column / unstack |
 | hyper + space | float or tile the focused window |
+| hyper + return | new iTerm window |
+| hyper + delete | close the focused window |
 | hyper + r | retile everything |
 | hyper + shift + r | reload the config |
 | hyper + shift + q | quit (parked windows come back on screen) |
 
+### Workspaces
+
+Each macOS space holds a vertical stack of workspaces, each with its own
+strip. Only one is on screen; the others park below the display with a
+sliver showing. (Not above: macOS keeps windows below the menu bar.)
+
+- **Focus up or down** moves within a stacked column first. At the top or
+  bottom of the column it goes to the workspace above or below. Past the
+  first or last workspace it goes to a new, empty one; windows opened
+  there stay there. On an empty workspace no window has keyboard focus.
+- **Move up or down** works the same way and takes the window along,
+  starting a new workspace past either end.
+- **An empty workspace** disappears once you leave it. When the one on
+  screen empties because its last window closed, the workspace above it
+  (or else below) takes its place.
+- **Focusing a parked window** (with cmd-tab, or a click on its sliver)
+  brings its workspace on screen.
+
 Everything is configurable: copy [`config/kineo.toml`](config/kineo.toml) to
 `~/.config/kineo/kineo.toml`. Unknown keys are reported rather than ignored;
 `kineo check-config` validates a file.
+
+A binding can also run a shell command: `"hyper+b" = "exec open -a Safari"`.
+The iTerm binding uses a profile named "Kineo" when there is one: copy
+[`config/iterm-profile.json`](config/iterm-profile.json) to
+`~/Library/Application Support/iTerm2/DynamicProfiles/` for windows without
+a title bar. The first time, macOS may ask to let Kineo control iTerm.
 
 ### Driving Kineo from outside
 

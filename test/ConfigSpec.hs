@@ -67,4 +67,6 @@ tests =
         mapM_ (\c -> parseCommand (commandName c) @?= Just c) allCommands
         parseCommand "  Focus Left " @?= Just (Focus DirLeft)
         parseCommand "cycle_width_back" @?= Just CycleWidthBack
+        parseCommand " Exec open -a 'My App' " @?= Just (Exec "open -a 'My App'")
+        parseCommand "exec" @?= Nothing
     ]

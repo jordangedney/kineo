@@ -34,6 +34,7 @@ import System.Directory (doesFileExist, getXdgDirectory, XdgDirectory (..))
 import System.Exit (exitFailure)
 import System.FilePath ((</>))
 import System.Posix.Signals (Handler (..), installHandler, sigINT, sigTERM)
+import System.Process (CreateProcess (..), StdStream (..), createProcess, shell, waitForProcess)
 
 data Input
   = Raw RawEvent
@@ -194,6 +195,16 @@ perform :: Env -> World -> Effect -> IO [Event]
 perform env w = \case
   Arrange ps -> [] <$ Animator.setTargets env.animator ps
   FocusWindow wid -> [] <$ Platform.focusWindow wid
+  FocusNothing -> [] <$ Platform.focusNothing
+  Close wid -> [] <$ Platform.closeWindow wid
+  Spawn cmd -> do
+    Log.debug env.logger ("exec: " ++ cmd)
+    r <- try @SomeException (createProcess (shell cmd) {std_in = NoStream, new_session = True})
+    case r of
+      Left e -> Log.err env.logger ("exec " ++ cmd ++ ": " ++ displayException e)
+      -- Reap it in the background so it never lingers as a zombie.
+      Right (_, _, _, ph) -> void (forkIO (void (waitForProcess ph)))
+    pure []
   ForgetFrames -> [] <$ Animator.forgetAll env.animator
   LoadConfig ->
     loadConfig env.configPath >>= \case

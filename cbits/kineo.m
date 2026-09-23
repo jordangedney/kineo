@@ -445,6 +445,23 @@ void kn_window_focus(uint32_t wid) {
     });
 }
 
+void kn_window_close(uint32_t wid) {
+    KNWindow *w = window_for(wid);
+    if (!w) return;
+    AXUIElementRef el = (__bridge AXUIElementRef)w.element;
+    CFTypeRef button = NULL;
+    if (AXUIElementCopyAttributeValue(el, kAXCloseButtonAttribute, &button) == kAXErrorSuccess && button) {
+        AXUIElementPerformAction((AXUIElementRef)button, kAXPressAction);
+        CFRelease(button);
+    }
+}
+
+void kn_focus_nothing(void) {
+    dispatch_async(dispatch_get_main_queue(), ^{
+        [NSApp activateIgnoringOtherApps:YES];
+    });
+}
+
 int kn_scan_windows(uint32_t *out, int max) {
     __block int n = 0;
     on_main(^{
