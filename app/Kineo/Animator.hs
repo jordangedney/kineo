@@ -37,6 +37,9 @@ data Motion = Motion
   , started :: Double
   , sized :: Bool
   -- ^ Has the final size been applied yet?
+  , resize :: Bool
+  -- ^ Does the window need resizing, going by its last known frame? Not
+  -- @from@: a window shuffled about off screen starts at its target.
   }
 
 data State = State
@@ -94,7 +97,8 @@ retarget cfg now st p = case Map.lookup p.window st.motions of
     begin cur =
       -- Shuffling windows around behind the screen edge needn't be animated.
       let from = if wasShown || p.onScreen then cur else p.rect
-       in st' {motions = Map.insert p.window (Motion from p.rect now False) st.motions}
+          resize = maybe True (not . sameSize p.rect) (Map.lookup p.window st.current)
+       in st' {motions = Map.insert p.window (Motion from p.rect now False resize) st.motions}
 
 -- | Where a motion has got to at a given time.
 position :: Animation -> Double -> Motion -> Rect
@@ -130,7 +134,7 @@ frame a dead tooWide = do
   applied <- forM (Map.toList ms) $ \(wid, m) -> do
     let done = progress cfg now m >= 1
         r = position cfg now m
-        resizing = not (sameSize m.from m.to)
+        resizing = m.resize
         moved = maybe True (not . samePlace r) (Map.lookup wid cur)
         send
           | done && resizing = do
