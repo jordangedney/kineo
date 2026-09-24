@@ -17,6 +17,17 @@ screen park at the edge of the display with a sliver showing.
       └─────────────────────────────────┘
 ```
 
+## Try it
+
+Kineo and [kineo-hyper](#caps-lock-as-hyper) together, with debug logs.
+Quitting Kineo (hyper + shift + q, or ctrl-c) stops both and gives Caps
+Lock back:
+
+```sh
+nix run 'git+ssh://git@github.com/jordangedney/kineo#dev'
+nix run .#dev        # the same, from a clone
+```
+
 ## Install
 
 ```sh
