@@ -4,7 +4,8 @@
 
 [layout]
 gap = 12            # pixels between columns, and between windows stacked in a column
-margin = 12         # pixels between windows and the edges of the screen
+margin = 12         # pixels between windows and the edges of the screen; at the sides,
+                    # at least a gap beyond the slivers of parked windows
 sliver = 8          # how much of an off-screen window peeks in at the screen edge
 focus = "reveal"    # "reveal": scroll just enough to show the focused window
                     # "center": keep the focused window in the middle

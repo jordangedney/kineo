@@ -48,7 +48,12 @@ data Placement = Placement
   deriving stock (Eq, Show)
 
 usableWidth :: Params -> Rect -> Double
-usableWidth p visible = visible.w - 2 * p.margin
+usableWidth p visible = visible.w - 2 * side p
+
+-- | Space at the left and right of the usable area: the margin, but at
+-- least a gap beyond the slivers of windows parked at the display edges.
+side :: Params -> Double
+side p = max p.margin (p.sliver + p.gap)
 
 -- | Pixel width of a column. Chosen so that columns whose fractions add up
 -- to 1 exactly fill the usable width, gaps included.
@@ -99,9 +104,9 @@ place p full visible others scroll strip = map settle (rects p visible scroll st
   where
     settle (wid, r)
       | r.x >= full.x - 1 && right r <= right full + 1 = Placement wid r True
-      -- Partly visible is fine, but only if it reaches past the margin into
-      -- the usable area; a few pixels in the margin is just clutter.
-      | shownWidth r > p.margin + p.sliver && not (any (intersects r) others) = Placement wid r True
+      -- Partly visible is fine, but only if it reaches past the side
+      -- margin into the usable area; a few pixels there is just clutter.
+      | shownWidth r > side p + p.sliver && not (any (intersects r) others) = Placement wid r True
       | otherwise = Placement wid (park p full others False r) False
 
     shownWidth r = min (right r) (right full) - max r.x full.x
@@ -127,7 +132,7 @@ rects p visible scroll strip = concat (zipWith placeColumn cols (spans p usable 
       let ws = NE.toList c.stack
           n = fromIntegral (length ws)
           rh = (height - (n - 1) * p.gap) / n
-          x0 = visible.x + p.margin + sx - scroll
+          x0 = visible.x + side p + sx - scroll
        in [(wid, Rect x0 (top + i * (rh + p.gap)) cw rh) | (i, wid) <- zip [0 ..] ws]
 
 -- | Park a window at the edge of a display with a 'sliver' showing: beside

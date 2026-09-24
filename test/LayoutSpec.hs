@@ -58,6 +58,13 @@ tests =
         let ps = place params full visible [] 0 (fromColumns (cols [(0.5, [1, 2])]))
         map (.rect.h) ps @?= replicate 2 ((875 - 40 - 10) / 2)
         map (.rect.y) ps @?= [45, 45 + (875 - 40 - 10) / 2 + 10]
+    , testCase "a small margin still leaves a gap beside the parked slivers" $ do
+        let p = params {margin = 4}
+        case place p full visible [] 0 (fromColumns (cols [(1, [1])])) of
+          [a] -> do
+            a.rect.x @?= full.x + p.sliver + p.gap
+            right full - right a.rect @?= p.sliver + p.gap
+          ps -> assertFailure (show ps)
     , testCase "windows past the right edge are parked with a sliver showing" $ do
         let ps = place params full visible [] 0 (fromColumns (cols [(1, [1]), (1, [2])]))
         case ps of
