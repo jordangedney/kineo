@@ -28,7 +28,7 @@ tests =
         assertBool "escape" (notElem '\ESC' (cheatsheet False defaultBindings))
     , testCase "every default binding's key is shown" $
         let s = cheatsheet False defaultBindings
-         in mapM_ (\k -> assertBool k (k `isInfixOf` s)) ["✦ f", "✦ e", "✦ ⇧ q", "✦ ↩", "✦ ⌫", "✦ space", "✦ ,", "✦ ."]
+         in mapM_ (\k -> assertBool k (k `isInfixOf` s)) ["✦ h", "✦ l", "✦ ⇧ q", "✦ ↩", "✦ ⌫", "✦ p", "✦ ,", "✦ ."]
     , testCase "three directions don't merge" $ do
         let s = sheet [("hyper+a", Focus DirLeft), ("hyper+d", Focus DirRight), ("hyper+w", Focus DirUp)]
         assertBool "no merged row" (not ("← → ↑ ↓" `isInfixOf` s))

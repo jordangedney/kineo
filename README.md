@@ -77,13 +77,13 @@ Default bindings (hyper = cmd+alt+ctrl):
 | Keys | Command |
 | --- | --- |
 | hyper + a / d / w / s | focus left / right / up / down |
-| hyper + f / e | focus first / last |
+| hyper + h / l | focus first / last |
 | hyper + shift + a / d / w / s | move window left / right / up / down |
-| hyper + t, hyper + shift + t | cycle column width forward / back |
-| hyper + m | toggle full width |
-| hyper + c | centre the focused column |
+| hyper + c, hyper + shift + c | cycle column width forward / back |
+| hyper + f | toggle full width |
+| hyper + m | centre (middle) the focused column |
 | hyper + comma / period | stack into the left column / unstack |
-| hyper + space | float or tile the focused window |
+| hyper + p | pop the focused window out to float, or back in to tile |
 | hyper + return | new iTerm window |
 | hyper + delete | close the focused window |
 | hyper + r | retile everything |
