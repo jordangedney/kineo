@@ -42,6 +42,16 @@ contains es e = e `elem` es @? "expected " ++ show e ++ " in " ++ show es
 open :: [WindowId] -> [Event]
 open = map (WindowAppeared . window)
 
+-- | After some events, a native tab @new@ opening exactly over @over@.
+tab :: WindowId -> WindowId -> [Event] -> [Event]
+tab new over evs = tabFrom (window over).pid new over evs
+
+-- | The same, as a window of the app with this pid.
+tabFrom :: Pid -> WindowId -> WindowId -> [Event] -> [Event]
+tabFrom p new over evs = case [pl.rect | pl <- layoutAll cfg (world evs), pl.window == over] of
+  [r] -> evs ++ [WindowAppeared (window new) {pid = p, bounds = r}]
+  _ -> error ("window " ++ show over ++ " isn't laid out")
+
 tests :: TestTree
 tests =
   testGroup
@@ -98,6 +108,20 @@ tests =
         -- The column keeps its own width, for when the window leaves it.
         (Strip.columns . (.strip) . activeWorkspace <$> Map.lookup 1 (world (open [1, 2] ++ [WindowMinWidth 1 1000])).spaces)
           @?= Just [Strip.Column {stack = pure 1, width = 0.5, savedWidth = Nothing}, Strip.Column {stack = pure 2, width = 0.5, savedWidth = Nothing}]
+    , testCase "a native tab takes its window's place instead of a new column" $ do
+        let w = world (tab 3 1 (open [1, 2] ++ [WindowFocused 1]))
+        order w @?= [[3], [2]]
+        ((.tabOf) <$> Map.lookup 1 w.windows) @?= Just (Just 3)
+    , testCase "selecting a hidden tab brings it back in place" $
+        order (world (tab 3 1 (open [1, 2] ++ [WindowFocused 1]) ++ [WindowFocused 1])) @?= [[1], [2]]
+    , testCase "closing the shown tab shows another in its place" $
+        order (world (tab 3 1 (open [1, 2] ++ [WindowFocused 1]) ++ [WindowGone 3])) @?= [[1], [2]]
+    , testCase "closing a hidden tab changes nothing" $ do
+        let w = world (tab 3 1 (open [1, 2] ++ [WindowFocused 1]) ++ [WindowGone 1])
+        order w @?= [[3], [2]]
+        Map.member 1 w.windows @?= False
+    , testCase "another app's window over a window is not a tab" $
+        order (world (tabFrom 9 3 1 (open [1, 2] ++ [WindowFocused 1]))) @?= [[1], [3], [2]]
     , testCase "a window dragged to another space moves strips" $ do
         let w = world (open [1, 2] ++ [Reconfigured [laptop, external] (Map.fromList [(2, 2)])])
         order w @?= [[1]]
@@ -167,10 +191,10 @@ tests =
         ws @?= nub ws
         length ws @?= 6
     , testProperty "invariants hold after any sequence of events" $
-        forAll (listOf genEvent) $ \evs ->
+        forAll (listOf genStep) $ \steps ->
           let go w [] = invariant w
-              go w (e : es) = let (w', _) = step cfg e w in invariant w' >> go w' es
-           in case go emptyWorld evs of
+              go w (s : ss) = let (w', _) = step cfg (event w s) w in invariant w' >> go w' ss
+           in case go emptyWorld steps of
                 Right () -> property True
                 Left err -> counterexample err False
     , testProperty "arrange only ever places visible windows, once each" $
@@ -181,3 +205,14 @@ tests =
     ]
   where
     (&) = flip ($)
+    -- Random events, and now and then a native tab opening over one of the
+    -- windows laid out at the time.
+    genStep = frequency [(8, Left <$> genEvent), (1, Right <$> ((,) <$> chooseInt (0, 20) <*> chooseEnum (1, 12)))]
+    event w = \case
+      Left e -> e
+      Right (i, new) -> case [p | p <- layoutAll cfg w, p.onScreen] of
+        [] -> Relayout
+        ps ->
+          let p = ps !! (i `mod` length ps)
+              owner = maybe 1 (.owner) (Map.lookup p.window w.windows)
+           in WindowAppeared (window new) {pid = owner, bounds = p.rect}

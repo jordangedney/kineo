@@ -13,6 +13,7 @@ import Data.Foldable (toList)
 import Data.List (nub)
 import Data.List.NonEmpty (NonEmpty (..))
 import Data.Map.Strict qualified as Map
+import Data.Maybe (isNothing)
 import Kineo.Command (allCommands)
 import Kineo.Core
 import Kineo.Geometry (Rect (..))
@@ -110,7 +111,7 @@ invariant w = do
   mapM_
     ( \(wid, t) -> do
         let homes = [sid | (sid, x) <- inStrips, x == wid]
-            expected = [t.onSpace | not t.isFloating]
+            expected = [t.onSpace | not t.isFloating, isNothing t.tabOf]
         if homes == expected
           then pure ()
           else Left ("window " ++ show wid ++ " is in strips " ++ show homes ++ ", expected " ++ show expected)
@@ -119,6 +120,13 @@ invariant w = do
   mapM_
     (\(_, wid) -> if Map.member wid w.windows then pure () else Left ("untracked window " ++ show wid ++ " in a strip"))
     inStrips
+  mapM_
+    ( \(wid, t) -> case t.tabOf of
+        Just s | fmap (isNothing . (.tabOf)) (Map.lookup s w.windows) /= Just True ->
+          Left ("tab " ++ show wid ++ " hides behind " ++ show s ++ ", which isn't a shown window")
+        _ -> pure ()
+    )
+    (Map.toList w.windows)
   mapM_
     (\ws -> if ws.scroll >= 0 then pure () else Left ("negative scroll " ++ show ws.scroll))
     (concatMap (toList . (.workspaces)) (Map.elems w.spaces))

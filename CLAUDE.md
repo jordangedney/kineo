@@ -42,7 +42,13 @@ touches the OS is in the executable (`app/`, `cbits/`).
   screen: macOS clamps them below the menu bar. Apps can refuse to shrink
   a window: the animator reads the width back 250 ms after the final
   resize, `WindowMinWidth` records it, and `widened` makes the column at
-  least that wide when laying out (the column keeps its own width). `exec` commands run a
+  least that wide when laying out (the column keeps its own width).
+  Native macOS tabs are separate windows: a new window of the same app
+  exactly over a laid-out window is a tab (`tabbedWith`) and takes its
+  place in the strip (`showTab`); unselected tabs are tracked with
+  `tabOf` and are in no strip. Focusing one swaps it in, and closing the
+  shown tab brings a hidden one forward. Tabs that already exist when
+  Kineo starts aren't recognised. `exec` commands run a
   shell command and are refused over the socket. Invariants
   (property-tested in `test/CoreSpec.hs`, checked in `test/Gen.hs`): every
   non-floating tracked window is in exactly one strip, in a workspace of

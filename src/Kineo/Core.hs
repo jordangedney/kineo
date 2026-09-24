@@ -93,6 +93,9 @@ data Tracked = Tracked
   -- ^ Where the window was when discovered, to keep startup order natural.
   , minWidth :: Double
   -- ^ Pixels the app won't let the window be narrower than; 0 if unknown.
+  , tabOf :: Maybe WindowId
+  -- ^ A native tab that isn't selected: hidden behind this tab of the same
+  -- window, which holds their place. Hidden tabs are in no strip.
   }
   deriving stock (Eq, Show)
 
@@ -207,7 +210,7 @@ update :: Config -> Event -> World -> (World, [Effect])
 update cfg ev w = case ev of
   WindowAppeared info -> (appear cfg info w, [])
   WindowGone wid -> (forget wid w, [])
-  WindowFocused wid -> (focusOn wid w, [])
+  WindowFocused wid -> (focusOn wid (revealTab wid w), [])
   WindowMinimized wid True -> (hideWindow wid (setTracked wid (\t -> t {isMinimized = True}) w), [])
   WindowMinimized wid False -> (setTracked wid (\t -> t {isMinimized = False}) w, [])
   -- Narrower than its supposed minimum by hand: that was a wrong guess.
@@ -228,6 +231,8 @@ update cfg ev w = case ev of
 appear :: Config -> WindowInfo -> World -> World
 appear cfg info w
   | Map.member info.wid w.windows || not (tileable info) = w
+  | Just (shown, t) <- tabbedWith cfg info w =
+      showTab info.wid shown w {windows = Map.insert info.wid t {originX = info.bounds.x} w.windows}
   | otherwise =
       let rule = ruleFor cfg info.bundleId info.title
           floating = maybe False (.float) rule
@@ -240,6 +245,7 @@ appear cfg info w
               , isFloating = floating
               , originX = info.bounds.x
               , minWidth = 0
+              , tabOf = Nothing
               }
           width = fromMaybe cfg.defaultWidth (rule >>= (.ruleWidth))
           w' = w {windows = Map.insert info.wid tracked w.windows}
@@ -275,10 +281,54 @@ insertInto w width wid ws = ws {strip = maybe byOrigin (\a -> Strip.insertAfter 
           before c = maybe True (\t -> t.originX <= x) (Map.lookup (NE.head c.stack) w.windows)
        in Strip.insertAt (length (takeWhile before (Strip.columns ws.strip))) col ws.strip
 
--- | Stop managing a window entirely.
+-- | The window a new one is a native tab of, and how that is tracked:
+-- macOS opens a tab exactly over the window it joins, where a new window
+-- would be offset from it.
+tabbedWith :: Config -> WindowInfo -> World -> Maybe (WindowId, Tracked)
+tabbedWith cfg info w =
+  listToMaybe
+    [ (p.window, t)
+    | p <- layoutAll cfg w
+    , p.onScreen
+    , near p.rect info.bounds
+    , Just t <- [Map.lookup p.window w.windows]
+    , t.owner == info.pid
+    ]
+  where
+    -- Apps report whole pixels; layouts aren't.
+    near a b = all (< 2) [abs (a.x - b.x), abs (a.y - b.y), abs (a.w - b.w), abs (a.h - b.h)]
+
+-- | Show a window in the place of another of its tabs, which then hides
+-- behind it along with the tabs that were hidden behind it.
+showTab :: WindowId -> WindowId -> World -> World
+showTab new old w = case (Map.lookup new w.windows, Map.lookup old w.windows) of
+  (Just n, Just o) ->
+    let retab t = if t.tabOf == Just old then t {tabOf = Just new} else t
+        windows' =
+          Map.insert new n {tabOf = Nothing, onSpace = o.onSpace, isFloating = o.isFloating}
+            . Map.insert old o {tabOf = Just new}
+            $ Map.map retab w.windows
+        swap x = if x == Just old then Just new else x
+        swapIn ws = ws {strip = Strip.replace old new ws.strip, lastFocus = swap ws.lastFocus}
+     in modifySpace o.onSpace (\sp -> sp {workspaces = fmap swapIn sp.workspaces}) $
+          w {windows = windows', focused = swap w.focused}
+  _ -> w
+
+-- | A hidden tab that takes focus has been selected: it takes its place.
+revealTab :: WindowId -> World -> World
+revealTab wid w = case Map.lookup wid w.windows >>= (.tabOf) of
+  Just shown -> showTab wid shown w
+  Nothing -> w
+
+-- | Stop managing a window entirely. Closing the tab that is shown brings
+-- another tab of the window forward in its place.
 forget :: WindowId -> World -> World
 forget wid w = case Map.lookup wid w.windows of
   Nothing -> w
+  Just t
+    | isNothing t.tabOf
+    , (h : _) <- [h | (h, x) <- Map.toList w.windows, x.tabOf == Just wid] ->
+        let w' = showTab h wid w in w' {windows = Map.delete wid w'.windows}
   Just t ->
     let w' = hideWindow wid w
      in removeFromSpace wid t.onSpace w' {windows = Map.delete wid w'.windows}
@@ -329,7 +379,8 @@ resized cfg wid px w = fromMaybe w $ do
 relocate :: WindowId -> SpaceId -> World -> World
 relocate wid sid w = case Map.lookup wid w.windows of
   Just t
-    | sid /= 0 && sid /= t.onSpace ->
+    -- A hidden tab follows the tab it hides behind when that is shown.
+    | sid /= 0 && sid /= t.onSpace && isNothing t.tabOf ->
         let width = maybe 0.5 (.width) (Strip.columnOf wid . (.strip) =<< homeOf wid w)
             w' = hideWindow wid w
             w'' = removeFromSpace wid t.onSpace w' {windows = Map.insert wid t {onSpace = sid} w'.windows}

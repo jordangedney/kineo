@@ -20,6 +20,7 @@ module Kineo.Strip
   , insertAt
   , insertAfter
   , remove
+  , replace
   , adjustColumn
   , restrict
   , neighbor
@@ -110,6 +111,15 @@ remove wid (Strip cs) = Strip (Seq.fromList (mapMaybe dropFrom (toList cs)))
     dropFrom c = case NE.filter (/= wid) c.stack of
       [] -> Nothing
       (a : as) -> Just c {stack = a :| as}
+
+-- | Put one window in another's place. Unchanged unless @old@ is in the
+-- strip and @new@ is not.
+replace :: WindowId -> WindowId -> Strip -> Strip
+replace old new s@(Strip cs)
+  | member old s && not (member new s) = Strip (fmap (\c -> c {stack = fmap swap c.stack}) cs)
+  | otherwise = s
+  where
+    swap x = if x == old then new else x
 
 -- | Modify the column holding a window.
 adjustColumn :: WindowId -> (Column -> Column) -> Strip -> Strip
