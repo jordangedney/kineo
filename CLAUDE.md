@@ -47,9 +47,12 @@ touches the OS is in the executable (`app/`, `cbits/`).
   exactly over a laid-out window is a tab (`tabbedWith`) and takes its
   place in the strip (`showTab`); unselected tabs are tracked with
   `tabOf` and are in no strip. Focusing one swaps it in, and closing the
-  shown tab brings a hidden one forward. Tabs that already exist when
-  Kineo starts aren't recognised. `exec` commands run a
-  shell command and are refused over the socket. Invariants
+  shown tab brings a hidden one forward. Only the selected tab is in an
+  app's AX window list, and switching tabs sends no focused-window
+  notification: `cbits/kineo.m` watches focused-element changes to see it
+  (`focus_moved` reports each window once). A tab opened before Kineo
+  started turns up when first selected, over its (maybe parked) window.
+  `exec` commands run a shell command and are refused over the socket. Invariants
   (property-tested in `test/CoreSpec.hs`, checked in `test/Gen.hs`): every
   non-floating tracked window is in exactly one strip, in a workspace of
   its space; a space has at least one workspace and no empty inactive one.

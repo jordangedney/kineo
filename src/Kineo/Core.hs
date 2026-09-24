@@ -283,13 +283,14 @@ insertInto w width wid ws = ws {strip = maybe byOrigin (\a -> Strip.insertAfter 
 
 -- | The window a new one is a native tab of, and how that is tracked:
 -- macOS opens a tab exactly over the window it joins, where a new window
--- would be offset from it.
+-- would be offset from it. Parked windows count: a tab first seen when it
+-- is selected, having been opened before Kineo started, turns up wherever
+-- its window is.
 tabbedWith :: Config -> WindowInfo -> World -> Maybe (WindowId, Tracked)
 tabbedWith cfg info w =
   listToMaybe
     [ (p.window, t)
     | p <- layoutAll cfg w
-    , p.onScreen
     , near p.rect info.bounds
     , Just t <- [Map.lookup p.window w.windows]
     , t.owner == info.pid

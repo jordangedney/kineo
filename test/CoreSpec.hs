@@ -112,6 +112,11 @@ tests =
         let w = world (tab 3 1 (open [1, 2] ++ [WindowFocused 1]))
         order w @?= [[3], [2]]
         ((.tabOf) <$> Map.lookup 1 w.windows) @?= Just (Just 3)
+    , testCase "a tab over a parked window is a tab too" $ do
+        let evs = open [1, 2, 3] ++ [WindowFocused 3]
+            parked = [p.window | p <- layoutAll cfg (world evs), not p.onScreen]
+        parked @?= [1]
+        order (world (tab 4 1 evs)) @?= [[4], [2], [3]]
     , testCase "selecting a hidden tab brings it back in place" $
         order (world (tab 3 1 (open [1, 2] ++ [WindowFocused 1]) ++ [WindowFocused 1])) @?= [[1], [2]]
     , testCase "closing the shown tab shows another in its place" $

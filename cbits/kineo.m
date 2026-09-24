@@ -61,6 +61,7 @@ static int connection(void) {
 @property(strong) id observer;  // AXObserverRef
 @property(strong) id element;   // AXUIElementRef of the application
 @property pid_t pid;
+@property uint32_t lastFocus;  // the window last reported focused
 @end
 @implementation KNApp
 @end
@@ -191,14 +192,33 @@ static bool is_frontmost(pid_t pid) {
     return NSWorkspace.sharedWorkspace.frontmostApplication.processIdentifier == pid;
 }
 
+static pid_t g_focus_pid;  // the app of the last focus reported; main thread only
+
 static void announce_focus(pid_t pid) {
+    // Every activation counts, Kineo's own included, so coming back to the
+    // same window after one is still reported.
+    bool again = pid == g_focus_pid;
+    g_focus_pid = pid;
     AXUIElementRef app = AXUIElementCreateApplication(pid);
     if (!app) return;
     id focused = copy_attr(app, kAXFocusedWindowAttribute);
     CFRelease(app);
     if (!focused) return;
     uint32_t wid = track_window(pid, (__bridge AXUIElementRef)focused, true);
-    if (wid) emit(KN_WINDOW_FOCUSED, pid, wid);
+    // Activation can be announced twice; the window already has focus.
+    if (!wid || (again && wid == g_apps[@(pid)].lastFocus)) return;
+    g_apps[@(pid)].lastFocus = wid;
+    emit(KN_WINDOW_FOCUSED, pid, wid);
+}
+
+// Focus moved within an app. Activating it, focusing a window and the
+// element inside it all say so; report each window once.
+static void focus_moved(pid_t pid, uint32_t wid) {
+    KNApp *a = g_apps[@(pid)];
+    if (!wid || !a || wid == a.lastFocus || !is_frontmost(pid)) return;
+    a.lastFocus = wid;
+    g_focus_pid = pid;
+    emit(KN_WINDOW_FOCUSED, pid, wid);
 }
 
 static void ax_callback(AXObserverRef observer, AXUIElementRef el, CFStringRef note, void *refcon) {
@@ -207,10 +227,14 @@ static void ax_callback(AXObserverRef observer, AXUIElementRef el, CFStringRef n
     if (CFEqual(note, kAXWindowCreatedNotification)) {
         track_window(pid, el, true);
     } else if (CFEqual(note, kAXFocusedWindowChangedNotification)) {
-        uint32_t wid = track_window(pid, el, true);
         // Apps move focus between their own windows in the background too;
         // only the frontmost app's focus is the user's.
-        if (wid && is_frontmost(pid)) emit(KN_WINDOW_FOCUSED, pid, wid);
+        focus_moved(pid, track_window(pid, el, true));
+    } else if (CFEqual(note, kAXFocusedUIElementChangedNotification)) {
+        // Switching native tabs changes the focused window without saying
+        // so; only the focused element inside it is announced.
+        id win = copy_attr(el, kAXWindowAttribute);
+        if (win) focus_moved(pid, track_window(pid, (__bridge AXUIElementRef)win, true));
     } else if (CFEqual(note, kAXUIElementDestroyedNotification)) {
         uint32_t wid = untrack_element(pid, el);
         if (wid) emit(KN_WINDOW_DESTROYED, pid, wid);
@@ -256,6 +280,8 @@ static void observe_app(NSRunningApplication *running, int attempt) {
             return;
         }
     }
+    // Optional: only for noticing tab switches.
+    AXObserverAddNotification(observer, app, kAXFocusedUIElementChangedNotification, (void *)(intptr_t)pid);
     CFRunLoopAddSource(CFRunLoopGetMain(), AXObserverGetRunLoopSource(observer), kCFRunLoopDefaultMode);
 
     KNApp *a = [KNApp new];
