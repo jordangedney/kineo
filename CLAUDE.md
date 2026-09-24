@@ -39,7 +39,10 @@ touches the OS is in the executable (`app/`, `cbits/`).
   no parked window keeps the keyboard). `tidy` drops empty inactive
   workspaces and leaves an active one whose windows all went away, unless
   the user went there empty on purpose. Windows can't be parked above the
-  screen: macOS clamps them below the menu bar. `exec` commands run a
+  screen: macOS clamps them below the menu bar. Apps can refuse to shrink
+  a window: the animator reads the width back 250 ms after the final
+  resize, `WindowMinWidth` records it, and `widened` makes the column at
+  least that wide when laying out (the column keeps its own width). `exec` commands run a
   shell command and are refused over the socket. Invariants
   (property-tested in `test/CoreSpec.hs`, checked in `test/Gen.hs`): every
   non-floating tracked window is in exactly one strip, in a workspace of

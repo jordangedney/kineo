@@ -91,6 +91,8 @@ data Tracked = Tracked
   , isFloating :: Bool
   , originX :: Double
   -- ^ Where the window was when discovered, to keep startup order natural.
+  , minWidth :: Double
+  -- ^ Pixels the app won't let the window be narrower than; 0 if unknown.
   }
   deriving stock (Eq, Show)
 
@@ -153,6 +155,8 @@ data Event
   | WindowMinimized WindowId Bool
   | -- | The user resized a window to this many pixels wide.
     WindowResized WindowId Double
+  | -- | A window refused to be made narrower than this many pixels.
+    WindowMinWidth WindowId Double
   | AppHidden Pid Bool
   | AppTerminated Pid
   | -- | Displays or spaces changed: the new displays, and the space each
@@ -206,7 +210,9 @@ update cfg ev w = case ev of
   WindowFocused wid -> (focusOn wid w, [])
   WindowMinimized wid True -> (hideWindow wid (setTracked wid (\t -> t {isMinimized = True}) w), [])
   WindowMinimized wid False -> (setTracked wid (\t -> t {isMinimized = False}) w, [])
-  WindowResized wid px -> (resized cfg wid px w, [])
+  -- Narrower than its supposed minimum by hand: that was a wrong guess.
+  WindowResized wid px -> (resized cfg wid px (setTracked wid (\t -> if px < t.minWidth then t {minWidth = 0} else t) w), [])
+  WindowMinWidth wid px -> (setTracked wid (\t -> t {minWidth = max t.minWidth px}) w, [])
   AppHidden pid hidden ->
     ( w {hiddenApps = (if hidden then Set.insert else Set.delete) pid w.hiddenApps}
     , []
@@ -233,6 +239,7 @@ appear cfg info w
               , isMinimized = info.minimized
               , isFloating = floating
               , originX = info.bounds.x
+              , minWidth = 0
               }
           width = fromMaybe cfg.defaultWidth (rule >>= (.ruleWidth))
           w' = w {windows = Map.insert info.wid tracked w.windows}
@@ -542,7 +549,7 @@ scrollSpace cfg mode sid w = fromMaybe w $ do
   d <- displayShowing w sid
   sp <- Map.lookup sid w.spaces
   let ws = activeWorkspace sp
-      vis = visibleStrip w sid
+      vis = widened cfg w d (visibleStrip w sid)
       cols = Strip.columns vis
       focusCol = fst <$> (ws.lastFocus >>= \f -> Strip.locate f vis)
       scroll' = scrollFor cfg.layout mode (usableWidth cfg.layout d.visibleFrame) (map (.width) cols) focusCol ws.scroll
@@ -558,11 +565,24 @@ layoutOn :: Config -> World -> Display -> SpaceId -> [Placement]
 layoutOn cfg w d sid =
   let others = [o.frame | o <- w.displays, o.displayId /= d.displayId]
       sp = fromMaybe emptySpace (Map.lookup sid w.spaces)
-      vis ws = Strip.restrict (isVisible w) ws.strip
+      vis ws = widened cfg w d (Strip.restrict (isVisible w) ws.strip)
       lay i ws
         | i == sp.active = place cfg.layout d.frame d.visibleFrame others ws.scroll (vis ws)
         | otherwise = stow cfg.layout d.frame d.visibleFrame others ws.scroll (vis ws)
    in concat (zipWith lay [0 ..] (toList sp.workspaces))
+
+-- | A strip with every column at least as wide as its widest window's
+-- minimum, so a window that won't shrink never overlaps its neighbours.
+-- Only for laying out: the column keeps its chosen width, to return to if
+-- the window moves elsewhere.
+widened :: Config -> World -> Display -> Strip -> Strip
+widened cfg w d = Strip.fromColumns . map widen . Strip.columns
+  where
+    usable = usableWidth cfg.layout d.visibleFrame
+    minOf wid = maybe 0 (.minWidth) (Map.lookup wid w.windows)
+    widen c = case maximum (fmap minOf c.stack) of
+      m | m > 0 -> c {width = max c.width (fractionFor cfg.layout usable m)}
+      _ -> c
 
 -- | Parked windows pulled fully back onto their display, for handing the
 -- screen back to the user when Kineo exits.

@@ -83,6 +83,7 @@ genEvent =
     , (4, WindowFocused <$> wid)
     , (2, WindowMinimized <$> wid <*> arbitrary)
     , (1, WindowResized <$> wid <*> choose (100, 1500))
+    , (1, WindowMinWidth <$> wid <*> choose (100, 3000))
     , (1, AppHidden <$> pid <*> arbitrary)
     , (1, AppTerminated <$> pid)
     , (1, Reconfigured <$> displays <*> (Map.fromList <$> listOf ((,) <$> wid <*> space)))

@@ -20,7 +20,7 @@ module Kineo.Animator
 
 import Control.Concurrent (forkIO, threadDelay)
 import Control.Concurrent.STM
-import Control.Monad (forM, forM_, forever, unless, when)
+import Control.Monad (forM, forM_, forever, unless, void, when)
 import Data.Map.Strict (Map)
 import Data.Map.Strict qualified as Map
 import Data.Maybe (fromMaybe)
@@ -55,11 +55,12 @@ data Animator = Animator
   }
 
 -- | Start the animation thread. @dead@ is told about windows that turned
--- out to be gone when we tried to move them.
-start :: Animation -> (WindowId -> IO ()) -> IO Animator
-start cfg dead = do
+-- out to be gone when we tried to move them, and @tooWide@ about windows
+-- whose app kept them wider than asked, with the width they kept.
+start :: Animation -> (WindowId -> IO ()) -> (WindowId -> Double -> IO ()) -> IO Animator
+start cfg dead tooWide = do
   a <- Animator <$> newTVarIO (State Map.empty Map.empty Map.empty Map.empty) <*> newTVarIO cfg
-  _ <- forkIO (forever (frame a dead))
+  _ <- forkIO (forever (frame a dead tooWide))
   pure a
 
 setConfig :: Animator -> Animation -> IO ()
@@ -113,8 +114,8 @@ ease e t = case e of
     | otherwise -> 1 - ((-2 * t + 2) ^ (3 :: Int)) / 2
 
 -- | One animation frame. Blocks while nothing is moving.
-frame :: Animator -> (WindowId -> IO ()) -> IO ()
-frame a dead = do
+frame :: Animator -> (WindowId -> IO ()) -> (WindowId -> Double -> IO ()) -> IO ()
+frame a dead tooWide = do
   ms <- atomically $ do
     st <- readTVar a.state
     when (Map.null st.motions) retry
@@ -133,6 +134,7 @@ frame a dead = do
           setFrame wid r True False
         else setFrame wid r True (not m.sized)
     when (res == DeadWindow) (dead wid)
+    when (done && res == SetOk) (checkWidth a tooWide wid r)
     pure (wid, m, r, done)
   after <- getMonotonicTime
   atomically . modifyTVar' a.state $ \st ->
@@ -156,6 +158,19 @@ frame a dead = do
   let budget = 1 / fromIntegral (max 1 cfg.fps)
       spent = after - now
   unless (spent >= budget) $ threadDelay (round ((budget - spent) * 1e6))
+
+-- | Apps can refuse to shrink a window below their minimum size. Look a
+-- moment after it was given its final size (some apps resize
+-- asynchronously), and only if nothing has moved it since.
+checkWidth :: Animator -> (WindowId -> Double -> IO ()) -> WindowId -> Rect -> IO ()
+checkWidth a tooWide wid r = void . forkIO $ do
+  threadDelay 250000
+  st <- readTVarIO a.state
+  let settled = not (Map.member wid st.motions) && fmap (.w) (Map.lookup wid st.current) == Just r.w
+  when settled $
+    windowFrame wid >>= \case
+      Just actual | actual.w > r.w + 2 -> tooWide wid actual.w
+      _ -> pure ()
 
 -- | Put windows straight into place, with no animation. For shutting down.
 placeNow :: [(WindowId, Rect)] -> IO ()

@@ -87,6 +87,17 @@ tests =
     , testCase "resizing a window by hand changes its column width" $ do
         let w = world (open [1] ++ [WindowResized 1 400])
         fmap (< 0.5) ((.width) <$> (Strip.columnOf 1 . (.strip) . activeWorkspace =<< Map.lookup 1 w.spaces)) @?= Just True
+    , testCase "a window that won't shrink widens its column instead of overlapping" $ do
+        let (_, es) = run (open [1, 2] ++ [WindowFocused 1, WindowMinWidth 1 1000])
+            near a b = abs (a - b) < 0.01
+        case ([p.rect | Arrange ps <- es, p <- ps, p.window == 1], [p.rect | Arrange ps <- es, p <- ps, p.window == 2]) of
+          ([r1], [r2]) -> do
+            near r1.w 1000 @? "column 1 is " ++ show r1.w ++ " wide"
+            near r2.x (r1.x + r1.w + cfg.layout.gap) @? "window 2 starts at " ++ show r2.x
+          other -> assertFailure ("placements: " ++ show other)
+        -- The column keeps its own width, for when the window leaves it.
+        (Strip.columns . (.strip) . activeWorkspace <$> Map.lookup 1 (world (open [1, 2] ++ [WindowMinWidth 1 1000])).spaces)
+          @?= Just [Strip.Column {stack = pure 1, width = 0.5, savedWidth = Nothing}, Strip.Column {stack = pure 2, width = 0.5, savedWidth = Nothing}]
     , testCase "a window dragged to another space moves strips" $ do
         let w = world (open [1, 2] ++ [Reconfigured [laptop, external] (Map.fromList [(2, 2)])])
         order w @?= [[1]]

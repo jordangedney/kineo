@@ -45,6 +45,8 @@ data Input
   | Remote Command
   | -- | Time to check whether the user has let go of a window they dragged.
     SettleDrag
+  | -- | The animator found a window wider than it was sized to.
+    TooWide WindowId Double
 
 data Env = Env
   { logger :: Logger
@@ -88,7 +90,7 @@ run lg path = do
 
   q <- newTQueueIO
   let enqueue = atomically . writeTQueue q
-  anim <- Animator.start cfg.animation (enqueue . Raw . RawWindowDestroyed)
+  anim <- Animator.start cfg.animation (enqueue . Raw . RawWindowDestroyed) (\wid px -> enqueue (TooWide wid px))
   env <- Env lg path <$> newIORef cfg <*> pure q <*> pure anim <*> newIORef IntMap.empty <*> newIORef 0
   registerHotkeys env cfg
   showCheatsheet cfg
@@ -140,6 +142,9 @@ handle env input w = do
 sense :: Env -> Input -> World -> IO [Event]
 sense env input w = case input of
   Remote c -> pure [Command c]
+  TooWide wid px -> do
+    Log.debug env.logger ("window " ++ show wid ++ " won't be narrower than " ++ show px)
+    pure [WindowMinWidth wid px]
   SettleDrag -> do
     now <- getMonotonicTime
     t <- readIORef env.lastDrag
