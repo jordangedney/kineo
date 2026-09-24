@@ -6,6 +6,7 @@ module Kineo.Keys
   , Chord (..)
   , parseChord
   , renderChord
+  , keyName
   , carbonModifiers
   , keyCode
   ) where
@@ -55,13 +56,15 @@ splitPlus str = case break (== '+') str of
   (a, _ : rest) -> a : splitPlus rest
 
 renderChord :: Chord -> String
-renderChord c =
-  intercalate "+" (map name (Set.toList c.modifiers) ++ [maybe (show c.key) fst (lookupCode c.key)])
+renderChord c = intercalate "+" (map name (Set.toList c.modifiers) ++ [keyName c.key])
   where
     name = \case Cmd -> "cmd"; Alt -> "alt"; Ctrl -> "ctrl"; Shift -> "shift"
-    lookupCode code = case [p | p@(_, v) <- keyTable, v == code] of
-      (p : _) -> Just p
-      [] -> Nothing
+
+-- | A key code's canonical name, as 'parseChord' reads it.
+keyName :: Word32 -> String
+keyName code = case [k | (k, v) <- keyTable, v == code] of
+  (k : _) -> k
+  [] -> show code
 
 -- | The modifier mask Carbon's @RegisterEventHotKey@ expects.
 carbonModifiers :: Set Modifier -> Word32

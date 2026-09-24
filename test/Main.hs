@@ -1,5 +1,6 @@
 module Main (main) where
 
+import CheatsheetSpec qualified
 import ConfigSpec qualified
 import CoreSpec qualified
 import LayoutSpec qualified
@@ -11,4 +12,4 @@ main =
   defaultMain $
     testGroup
       "kineo"
-      [StripSpec.tests, LayoutSpec.tests, CoreSpec.tests, ConfigSpec.tests]
+      [StripSpec.tests, LayoutSpec.tests, CoreSpec.tests, ConfigSpec.tests, CheatsheetSpec.tests]

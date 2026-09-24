@@ -40,6 +40,7 @@ library
   import:          shared
   hs-source-dirs:  src
   exposed-modules:
+    Kineo.Cheatsheet
     Kineo.Command
     Kineo.Config
     Kineo.Core
@@ -115,6 +116,7 @@ test-suite spec
   hs-source-dirs: test
   main-is:        Main.hs
   other-modules:
+    CheatsheetSpec
     CoreSpec
     Gen
     LayoutSpec

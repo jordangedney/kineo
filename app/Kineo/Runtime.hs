@@ -15,10 +15,12 @@ import Data.IORef
 import Data.IntMap.Strict (IntMap)
 import Data.IntMap.Strict qualified as IntMap
 import Data.Map.Strict qualified as Map
+import Data.Maybe (isJust)
 import Data.Text.IO qualified as T
 import GHC.Clock (getMonotonicTime)
 import Kineo.Animator (Animator)
 import Kineo.Animator qualified as Animator
+import Kineo.Cheatsheet (cheatsheet)
 import Kineo.Command (Command (..), commandName)
 import Kineo.Config (Config (..), decodeConfig, defaultConfig)
 import Kineo.Core
@@ -31,8 +33,10 @@ import Kineo.Platform qualified as Platform
 import Kineo.Remote qualified as Remote
 import Kineo.Strip (WindowId)
 import System.Directory (doesFileExist, getXdgDirectory, XdgDirectory (..))
+import System.Environment (lookupEnv)
 import System.Exit (exitFailure)
 import System.FilePath ((</>))
+import System.IO (hFlush, hIsTerminalDevice, hPutStr, stderr)
 import System.Posix.Signals (Handler (..), installHandler, sigINT, sigTERM)
 import System.Process (CreateProcess (..), StdStream (..), createProcess, shell, waitForProcess)
 
@@ -87,6 +91,7 @@ run lg path = do
   anim <- Animator.start cfg.animation (enqueue . Raw . RawWindowDestroyed)
   env <- Env lg path <$> newIORef cfg <*> pure q <*> pure anim <*> newIORef IntMap.empty <*> newIORef 0
   registerHotkeys env cfg
+  showCheatsheet cfg
 
   Remote.serve (enqueue . Remote)
   forM_ [sigINT, sigTERM] $ \s -> installHandler s (Catch (enqueue (Remote Quit))) Nothing
@@ -225,6 +230,14 @@ perform env w = \case
     Animator.placeNow (released cfg w)
     Platform.quit 0
     forever (threadDelay maxBound)
+
+-- | The key bindings, when started from a terminal rather than launchd.
+-- Coloured unless @NO_COLOR@ is set.
+showCheatsheet :: Config -> IO ()
+showCheatsheet cfg = do
+  tty <- hIsTerminalDevice stderr
+  noColour <- isJust <$> lookupEnv "NO_COLOR"
+  when tty $ hPutStr stderr (cheatsheet (not noColour) cfg.bindings) >> hFlush stderr
 
 registerHotkeys :: Env -> Config -> IO ()
 registerHotkeys env cfg = do
