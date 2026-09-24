@@ -17,6 +17,10 @@ screen park at the edge of the display with a sliver showing.
       └─────────────────────────────────┘
 ```
 
+Early days: it works day to day, but animations use more CPU than they
+should and windows occasionally glitch into the wrong place (hyper + r
+retiles).
+
 ## Try it
 
 Kineo and [kineo-hyper](#caps-lock-as-hyper) together, with debug logs.
@@ -24,14 +28,13 @@ Quitting Kineo (hyper + shift + q, or ctrl-c) stops both and gives Caps
 Lock back:
 
 ```sh
-nix run 'git+ssh://git@github.com/jordangedney/kineo#dev'
+nix run github:jordangedney/kineo#dev
 nix run .#dev        # the same, from a clone
 ```
 
 ## Install
 
 ```sh
-nix run github:jordangedney/kineo          # try it
 nix profile install github:jordangedney/kineo
 ```
 
