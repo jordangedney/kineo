@@ -13,7 +13,7 @@ widths = [0.3333, 0.5, 0.6667, 1.0]   # presets for cycle-width, as fractions of
 default-width = 0.5                   # width of newly opened windows
 
 [animation]
-duration-ms = 200   # 0 turns animation off; a spring is within a few pixels by then
+duration-ms = 250   # 0 turns animation off; a spring is within a few pixels by then
 fps = 120           # at most; frames follow the display's refresh rate
 easing = "spring"   # "spring" keeps its speed when a new command redirects it;
                     # or "linear", "ease-out", "ease-in-out"
