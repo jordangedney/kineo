@@ -47,6 +47,7 @@ library
     Kineo.Geometry
     Kineo.Keys
     Kineo.Layout
+    Kineo.Motion
     Kineo.Strip
 
   build-depends:
@@ -121,6 +122,7 @@ test-suite spec
     CoreSpec
     Gen
     LayoutSpec
+    MotionSpec
     StripSpec
     ConfigSpec
 

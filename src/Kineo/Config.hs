@@ -41,7 +41,12 @@ data Config = Config
 data Animation = Animation {durationMs :: Int, fps :: Int, easing :: Easing}
   deriving stock (Eq, Show)
 
-data Easing = Linear | EaseOut | EaseInOut
+data Easing
+  = Linear
+  | EaseOut
+  | EaseInOut
+  | -- | A critically damped spring: keeps its speed when redirected.
+    Spring
   deriving stock (Eq, Show)
 
 -- | Per-application behaviour. A rule matches when every field it sets
@@ -64,7 +69,7 @@ defaultConfig =
     , focusMode = Reveal
     , widths = [0.3333, 0.5, 0.6667, 1]
     , defaultWidth = 1 / 2
-    , animation = Animation {durationMs = 200, fps = 120, easing = EaseOut}
+    , animation = Animation {durationMs = 200, fps = 120, easing = Spring}
     , bindings = defaultBindings
     , rules =
         [ Rule {app = Just "com.apple.systempreferences", titleContains = Nothing, float = True, ruleWidth = Nothing}
@@ -200,6 +205,7 @@ animationTable = do
       "linear" -> pure Linear
       "ease-out" -> pure EaseOut
       "ease-in-out" -> pure EaseInOut
+      "spring" -> pure Spring
       other -> Toml.failAt (Toml.valueAnn v) ("unknown easing " ++ show (other :: Text))
   pure
     Animation

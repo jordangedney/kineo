@@ -30,32 +30,37 @@ import Data.Map.Strict (Map)
 import Data.Map.Strict qualified as Map
 import Data.Maybe (fromMaybe)
 import GHC.Clock (getMonotonicTime)
-import Kineo.Config (Animation (..), Easing (..))
-import Kineo.Geometry (Rect (..), approxEq, lerp)
+import Kineo.Config (Animation (..))
+import Kineo.Geometry (Rect (..), approxEq)
 import Kineo.Layout (Placement (..))
+import Kineo.Motion (Motion (..))
+import Kineo.Motion qualified as Motion
 import Kineo.Platform (SetResult (..), framesIdle, nextFrame, setFrame, windowFrame)
 import Kineo.Strip (WindowId)
 
-data Motion = Motion
-  { from :: Rect
-  , to :: Rect
-  , started :: Double
+-- | A window on its way.
+data Flight = Flight
+  { motion :: Motion
   , begun :: Bool
   -- ^ Has its first frame been sent?
   , resize :: Bool
   -- ^ Does the window need resizing, going by its last known frame? Not
-  --     @from@: a window shuffled about off screen starts at its target.
+  -- the motion's start: a window shuffled about off screen starts at its
+  -- target.
   }
 
 data State = State
   { current :: Map WindowId Rect
   -- ^ The frame each window has now, as far as we know.
-  , motions :: Map WindowId Motion
+  , flights :: Map WindowId Flight
   , touched :: Map WindowId Double
   -- ^ When we last moved each window.
   , shown :: Map WindowId Bool
   -- ^ Whether each window's last target was on screen.
   }
+
+emptyState :: State
+emptyState = State Map.empty Map.empty Map.empty Map.empty
 
 -- | A frame for a window's sender.
 data Send = Send
@@ -83,7 +88,7 @@ start :: Animation -> (WindowId -> IO ()) -> (WindowId -> Double -> IO ()) -> IO
 start cfg dead tooWide = do
   a <-
     Animator
-      <$> newTVarIO (State Map.empty Map.empty Map.empty Map.empty)
+      <$> newTVarIO emptyState
       <*> newTVarIO cfg
       <*> newTVarIO Map.empty
       <*> pure dead
@@ -109,38 +114,23 @@ setTargets a ps = do
      in foldl (retarget cfg now) st' ps
 
 retarget :: Animation -> Double -> State -> Placement -> State
-retarget cfg now st p = case Map.lookup p.window st.motions of
-  Just m | approxEq m.to p.rect -> st'
-  Just m -> begin (position cfg now m)
+retarget cfg now st p = case Map.lookup p.window st.flights of
+  Just f | approxEq f.motion.to p.rect -> st'
+  -- Already moving: carry on from where it has got to, at its speed.
+  Just f | f.begun -> fly (Motion.redirect cfg now p.rect f.motion)
+  Just f -> fly (Motion.begin now f.motion.from p.rect)
   Nothing -> case Map.lookup p.window st.current of
     Just cur | approxEq cur p.rect -> st'
-    Just cur -> begin cur
-    Nothing -> begin p.rect
+    Just cur -> fly (Motion.begin now cur p.rect)
+    Nothing -> fly (Motion.begin now p.rect p.rect)
   where
     wasShown = Map.findWithDefault True p.window st.shown
     st' = st {shown = Map.insert p.window p.onScreen st.shown}
-    begin cur =
+    fly m =
       -- Shuffling windows around behind the screen edge needn't be animated.
-      let from = if wasShown || p.onScreen then cur else p.rect
+      let m' = if wasShown || p.onScreen then m else Motion.begin now p.rect p.rect
           resize = maybe True (not . sameSize p.rect) (Map.lookup p.window st.current)
-       in st' {motions = Map.insert p.window (Motion from p.rect now False resize) st.motions}
-
--- | Where a motion has got to at a given time.
-position :: Animation -> Double -> Motion -> Rect
-position cfg now m = (lerp m.from m.to (ease cfg.easing (progress cfg now m))) {w = m.to.w, h = m.to.h}
-
-progress :: Animation -> Double -> Motion -> Double
-progress cfg now m
-  | cfg.durationMs <= 0 = 1
-  | otherwise = max 0 (min 1 ((now - m.started) / (fromIntegral cfg.durationMs / 1000)))
-
-ease :: Easing -> Double -> Double
-ease e t = case e of
-  Linear -> t
-  EaseOut -> 1 - (1 - t) ^ (3 :: Int)
-  EaseInOut
-    | t < 0.5 -> 4 * t * t * t
-    | otherwise -> 1 - ((-2 * t + 2) ^ (3 :: Int)) / 2
+       in st' {flights = Map.insert p.window (Flight m' False resize) st.flights}
 
 -- | Animate frame after frame, in step with the display, and rest while
 -- nothing is moving.
@@ -148,10 +138,10 @@ run :: Animator -> IO ()
 run a = go 0
   where
     go lastShown = do
-      idle <- Map.null . (.motions) <$> readTVarIO a.state
+      idle <- Map.null . (.flights) <$> readTVarIO a.state
       when idle $ do
         framesIdle
-        atomically (readTVar a.state >>= \st -> when (Map.null st.motions) retry)
+        atomically (readTVar a.state >>= \st -> when (Map.null st.flights) retry)
       cfg <- readTVarIO a.config
       shown <- nextShown (1 / fromIntegral (max 1 cfg.fps)) lastShown
       frame a cfg shown
@@ -176,35 +166,39 @@ nextShown interval lastShown =
 --
 -- Every call into an app costs it work, so a frame only sends what
 -- changed: most motions only move a window, and resizing one makes the
--- app lay out and redraw it; near the end of an eased motion several
--- frames round to the same pixel.
+-- app lay out and redraw it; near the end of a motion several frames
+-- round to the same pixel.
 frame :: Animator -> Animation -> Double -> IO ()
 frame a cfg shown = do
   st <- readTVarIO a.state
   now <- getMonotonicTime
   let interval = 1 / fromIntegral (max 1 cfg.fps)
-      plan (wid, m) =
+      plan (wid, f) =
         let
           -- A motion starts on its first frame, however long it waited
           -- for it, so that frame doesn't jump ahead.
-          m' = if m.begun then m else m {started = shown - interval, begun = True}
-          r = position cfg shown m'
-          done = progress cfg shown m' >= 1
-          sizeIt = m.resize && (done || not m.begun)
+          f' = if f.begun then f else f {motion = f.motion {started = shown - interval}, begun = True}
+          r = Motion.at cfg shown f'.motion
+          done = Motion.finished cfg shown f'.motion
+          sizeIt = f.resize && (done || not f.begun)
           moved = maybe True (not . samePlace r) (Map.lookup wid st.current)
          in
-          (wid, m', r, done, [Send r sizeIt (done && m.resize) | sizeIt || moved])
-      plans = map plan (Map.toList st.motions)
+          (wid, f', r, done, [Send r sizeIt (done && f.resize) | sizeIt || moved])
+      plans = map plan (Map.toList st.flights)
   forM_ plans $ \(wid, _, _, _, sends) -> mapM_ (post a wid) sends
-  let update s (wid, m, r, done, _) = case Map.lookup wid s.motions of
-        -- Retargeted since: keep the new motion.
-        Just m' | not (approxEq m'.to m.to) -> s {current = Map.insert wid r s.current}
-        _ ->
-          s
-            { current = Map.insert wid r s.current
-            , touched = Map.insert wid now s.touched
-            , motions = if done then Map.delete wid s.motions else Map.insert wid m s.motions
-            }
+  let update s (wid, f, r, done, sends) =
+        let sent = not (null sends)
+            s'
+              | sent =
+                  s
+                    { current = Map.insert wid r s.current
+                    , touched = Map.insert wid now s.touched
+                    }
+              | otherwise = s
+         in case Map.lookup wid s.flights of
+              -- Retargeted since: keep the new motion.
+              Just f' | not (approxEq f'.motion.to f.motion.to) -> s'
+              _ -> s' {flights = if done then Map.delete wid s.flights else Map.insert wid f s.flights}
   atomically . modifyTVar' a.state $ \s -> foldl update s plans
 
 -- | Hand a frame to a window's sender, replacing any it hasn't sent yet.
@@ -259,7 +253,7 @@ checkWidth :: Animator -> WindowId -> Rect -> IO ()
 checkWidth a wid r = void . forkIO $ do
   threadDelay 250000
   st <- readTVarIO a.state
-  let settled = not (Map.member wid st.motions) && fmap (.w) (Map.lookup wid st.current) == Just r.w
+  let settled = not (Map.member wid st.flights) && fmap (.w) (Map.lookup wid st.current) == Just r.w
   when settled $
     windowFrame wid >>= \case
       Just actual | actual.w > r.w + 2 -> a.tooWide wid actual.w
@@ -274,7 +268,7 @@ forget a wid = atomically $ do
   modifyTVar' a.state $ \st ->
     st
       { current = Map.delete wid st.current
-      , motions = Map.delete wid st.motions
+      , flights = Map.delete wid st.flights
       , touched = Map.delete wid st.touched
       , shown = Map.delete wid st.shown
       }
@@ -284,7 +278,7 @@ forget a wid = atomically $ do
 
 forgetAll :: Animator -> IO ()
 forgetAll a = atomically $ do
-  writeTVar a.state (State Map.empty Map.empty Map.empty Map.empty)
+  writeTVar a.state emptyState
   readTVar a.senders >>= mapM_ (`writeTVar` Stopped)
   writeTVar a.senders Map.empty
 
@@ -303,5 +297,5 @@ busy a wid = do
   st <- readTVarIO a.state
   now <- getMonotonicTime
   pure $
-    Map.member wid st.motions
+    Map.member wid st.flights
       || fromMaybe False ((\t -> now - t < 0.3) <$> Map.lookup wid st.touched)
