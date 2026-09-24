@@ -114,27 +114,36 @@ ease e t = case e of
     | otherwise -> 1 - ((-2 * t + 2) ^ (3 :: Int)) / 2
 
 -- | One animation frame. Blocks while nothing is moving.
+--
+-- Every call into an app costs it work, so a frame only sends what
+-- changed: most motions only move a window, and resizing one makes the
+-- app lay out and redraw it; near the end of an eased motion several
+-- frames round to the same pixel.
 frame :: Animator -> (WindowId -> IO ()) -> (WindowId -> Double -> IO ()) -> IO ()
 frame a dead tooWide = do
-  ms <- atomically $ do
+  (ms, cur) <- atomically $ do
     st <- readTVar a.state
     when (Map.null st.motions) retry
-    pure st.motions
+    pure (st.motions, st.current)
   cfg <- readTVarIO a.config
   now <- getMonotonicTime
   applied <- forM (Map.toList ms) $ \(wid, m) -> do
     let done = progress cfg now m >= 1
         r = position cfg now m
-    res <-
-      if done
-        then do
-          -- Size, then position again: an app may have nudged the window
-          -- while it resized.
-          _ <- setFrame wid r True True
-          setFrame wid r True False
-        else setFrame wid r True (not m.sized)
+        resizing = not (sameSize m.from m.to)
+        moved = maybe True (not . samePlace r) (Map.lookup wid cur)
+        send
+          | done && resizing = do
+              -- Size, then position again: an app may have nudged the
+              -- window while it resized.
+              _ <- setFrame wid r True True
+              setFrame wid r True False
+          | resizing && not m.sized = setFrame wid r True True
+          | moved = setFrame wid r True False
+          | otherwise = pure SetOk
+    res <- send
     when (res == DeadWindow) (dead wid)
-    when (done && res == SetOk) (checkWidth a tooWide wid r)
+    when (done && resizing && res == SetOk) (checkWidth a tooWide wid r)
     pure (wid, m, r, done)
   after <- getMonotonicTime
   atomically . modifyTVar' a.state $ \st ->
@@ -158,6 +167,11 @@ frame a dead tooWide = do
   let budget = 1 / fromIntegral (max 1 cfg.fps)
       spent = after - now
   unless (spent >= budget) $ threadDelay (round ((budget - spent) * 1e6))
+
+-- | Within half a pixel, as the app will round it.
+sameSize, samePlace :: Rect -> Rect -> Bool
+sameSize a b = abs (a.w - b.w) < 0.5 && abs (a.h - b.h) < 0.5
+samePlace a b = round a.x == (round b.x :: Int) && round a.y == (round b.y :: Int)
 
 -- | Apps can refuse to shrink a window below their minimum size. Look a
 -- moment after it was given its final size (some apps resize
