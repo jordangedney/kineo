@@ -5,6 +5,11 @@
 -- Resizing an app's window every frame is slow and makes content jitter,
 -- so a window takes its final size on the first frame and only its
 -- position is animated.
+--
+-- Frames follow the display's refresh. Each window has its own sender
+-- thread that makes the (blocking) accessibility calls, and only ever
+-- has the latest frame to send: an app that is slow to answer skips
+-- frames of its own windows and holds up no one else's.
 module Kineo.Animator
   ( Animator
   , start
@@ -20,7 +25,7 @@ module Kineo.Animator
 
 import Control.Concurrent (forkIO, threadDelay)
 import Control.Concurrent.STM
-import Control.Monad (forM, forM_, forever, unless, void, when)
+import Control.Monad (forM, forM_, void, when)
 import Data.Map.Strict (Map)
 import Data.Map.Strict qualified as Map
 import Data.Maybe (fromMaybe)
@@ -28,18 +33,18 @@ import GHC.Clock (getMonotonicTime)
 import Kineo.Config (Animation (..), Easing (..))
 import Kineo.Geometry (Rect (..), approxEq, lerp)
 import Kineo.Layout (Placement (..))
-import Kineo.Platform (SetResult (..), setFrame, windowFrame)
+import Kineo.Platform (SetResult (..), framesIdle, nextFrame, setFrame, windowFrame)
 import Kineo.Strip (WindowId)
 
 data Motion = Motion
   { from :: Rect
   , to :: Rect
   , started :: Double
-  , sized :: Bool
-  -- ^ Has the final size been applied yet?
+  , begun :: Bool
+  -- ^ Has its first frame been sent?
   , resize :: Bool
   -- ^ Does the window need resizing, going by its last known frame? Not
-  -- @from@: a window shuffled about off screen starts at its target.
+  --     @from@: a window shuffled about off screen starts at its target.
   }
 
 data State = State
@@ -52,9 +57,23 @@ data State = State
   -- ^ Whether each window's last target was on screen.
   }
 
+-- | A frame for a window's sender.
+data Send = Send
+  { rect :: Rect
+  , sizeIt :: Bool
+  -- ^ Set the size too, not just the position.
+  , final :: Bool
+  -- ^ The last frame of its motion.
+  }
+
+data Mailbox = Idle | Pending Send | Stopped
+
 data Animator = Animator
   { state :: TVar State
   , config :: TVar Animation
+  , senders :: TVar (Map WindowId (TVar Mailbox))
+  , dead :: WindowId -> IO ()
+  , tooWide :: WindowId -> Double -> IO ()
   }
 
 -- | Start the animation thread. @dead@ is told about windows that turned
@@ -62,8 +81,14 @@ data Animator = Animator
 -- whose app kept them wider than asked, with the width they kept.
 start :: Animation -> (WindowId -> IO ()) -> (WindowId -> Double -> IO ()) -> IO Animator
 start cfg dead tooWide = do
-  a <- Animator <$> newTVarIO (State Map.empty Map.empty Map.empty Map.empty) <*> newTVarIO cfg
-  _ <- forkIO (forever (frame a dead tooWide))
+  a <-
+    Animator
+      <$> newTVarIO (State Map.empty Map.empty Map.empty Map.empty)
+      <*> newTVarIO cfg
+      <*> newTVarIO Map.empty
+      <*> pure dead
+      <*> pure tooWide
+  _ <- forkIO (run a)
   pure a
 
 setConfig :: Animator -> Animation -> IO ()
@@ -117,60 +142,110 @@ ease e t = case e of
     | t < 0.5 -> 4 * t * t * t
     | otherwise -> 1 - ((-2 * t + 2) ^ (3 :: Int)) / 2
 
--- | One animation frame. Blocks while nothing is moving.
+-- | Animate frame after frame, in step with the display, and rest while
+-- nothing is moving.
+run :: Animator -> IO ()
+run a = go 0
+  where
+    go lastShown = do
+      idle <- Map.null . (.motions) <$> readTVarIO a.state
+      when idle $ do
+        framesIdle
+        atomically (readTVar a.state >>= \st -> when (Map.null st.motions) retry)
+      cfg <- readTVarIO a.config
+      shown <- nextShown (1 / fromIntegral (max 1 cfg.fps)) lastShown
+      frame a cfg shown
+      go shown
+
+-- | Wait for the display's next frame, at most @fps@ times a second, and
+-- say when it will be on screen. Without a display link, just sleep.
+nextShown :: Double -> Double -> IO Double
+nextShown interval lastShown =
+  nextFrame >>= \case
+    Just ahead -> do
+      shown <- (+ ahead) <$> getMonotonicTime
+      if shown - lastShown >= 0.9 * interval then pure shown else nextShown interval lastShown
+    Nothing -> do
+      now <- getMonotonicTime
+      let wake = lastShown + interval
+      when (wake > now) $ threadDelay (round ((wake - now) * 1e6))
+      getMonotonicTime
+
+-- | One animation frame: where every moving window should be at @shown@,
+-- when the display will show it, handed to the windows' senders.
 --
 -- Every call into an app costs it work, so a frame only sends what
 -- changed: most motions only move a window, and resizing one makes the
 -- app lay out and redraw it; near the end of an eased motion several
 -- frames round to the same pixel.
-frame :: Animator -> (WindowId -> IO ()) -> (WindowId -> Double -> IO ()) -> IO ()
-frame a dead tooWide = do
-  (ms, cur) <- atomically $ do
-    st <- readTVar a.state
-    when (Map.null st.motions) retry
-    pure (st.motions, st.current)
-  cfg <- readTVarIO a.config
+frame :: Animator -> Animation -> Double -> IO ()
+frame a cfg shown = do
+  st <- readTVarIO a.state
   now <- getMonotonicTime
-  applied <- forM (Map.toList ms) $ \(wid, m) -> do
-    let done = progress cfg now m >= 1
-        r = position cfg now m
-        resizing = m.resize
-        moved = maybe True (not . samePlace r) (Map.lookup wid cur)
-        send
-          | done && resizing = do
-              -- Size, then position again: an app may have nudged the
-              -- window while it resized.
-              _ <- setFrame wid r True True
-              setFrame wid r True False
-          | resizing && not m.sized = setFrame wid r True True
-          | moved = setFrame wid r True False
-          | otherwise = pure SetOk
-    res <- send
-    when (res == DeadWindow) (dead wid)
-    when (done && resizing && res == SetOk) (checkWidth a tooWide wid r)
-    pure (wid, m, r, done)
-  after <- getMonotonicTime
-  atomically . modifyTVar' a.state $ \st ->
-    foldl
-      ( \s (wid, m, r, done) ->
-          case Map.lookup wid s.motions of
-            -- Retargeted while we were moving it: keep the new motion.
-            Just m' | not (approxEq m'.to m.to) -> s {current = Map.insert wid r s.current}
-            _ ->
-              s
-                { current = Map.insert wid r s.current
-                , touched = Map.insert wid after s.touched
-                , motions =
-                    if done
-                      then Map.delete wid s.motions
-                      else Map.insert wid m {sized = True} s.motions
-                }
-      )
-      st
-      applied
-  let budget = 1 / fromIntegral (max 1 cfg.fps)
-      spent = after - now
-  unless (spent >= budget) $ threadDelay (round ((budget - spent) * 1e6))
+  let interval = 1 / fromIntegral (max 1 cfg.fps)
+      plan (wid, m) =
+        let
+          -- A motion starts on its first frame, however long it waited
+          -- for it, so that frame doesn't jump ahead.
+          m' = if m.begun then m else m {started = shown - interval, begun = True}
+          r = position cfg shown m'
+          done = progress cfg shown m' >= 1
+          sizeIt = m.resize && (done || not m.begun)
+          moved = maybe True (not . samePlace r) (Map.lookup wid st.current)
+         in
+          (wid, m', r, done, [Send r sizeIt (done && m.resize) | sizeIt || moved])
+      plans = map plan (Map.toList st.motions)
+  forM_ plans $ \(wid, _, _, _, sends) -> mapM_ (post a wid) sends
+  let update s (wid, m, r, done, _) = case Map.lookup wid s.motions of
+        -- Retargeted since: keep the new motion.
+        Just m' | not (approxEq m'.to m.to) -> s {current = Map.insert wid r s.current}
+        _ ->
+          s
+            { current = Map.insert wid r s.current
+            , touched = Map.insert wid now s.touched
+            , motions = if done then Map.delete wid s.motions else Map.insert wid m s.motions
+            }
+  atomically . modifyTVar' a.state $ \s -> foldl update s plans
+
+-- | Hand a frame to a window's sender, replacing any it hasn't sent yet.
+post :: Animator -> WindowId -> Send -> IO ()
+post a wid s = do
+  box <-
+    readTVarIO a.senders >>= \m -> case Map.lookup wid m of
+      Just box -> pure box
+      Nothing -> do
+        box <- newTVarIO Idle
+        atomically $ modifyTVar' a.senders (Map.insert wid box)
+        _ <- forkIO (sender a wid box)
+        pure box
+  atomically . modifyTVar' box $ \case
+    Stopped -> Stopped
+    Idle -> Pending s
+    -- A size not sent yet is still owed.
+    Pending old -> Pending s {sizeIt = s.sizeIt || old.sizeIt}
+
+-- | Send one window its frames, as fast as its app takes them.
+sender :: Animator -> WindowId -> TVar Mailbox -> IO ()
+sender a wid box = loop
+  where
+    loop = do
+      next <-
+        atomically $
+          readTVar box >>= \case
+            Idle -> retry
+            Stopped -> pure Nothing
+            Pending s -> Just s <$ writeTVar box Idle
+      forM_ next $ \s -> do
+        res <- setFrame wid s.rect True s.sizeIt
+        -- After a final resize, position again: an app may have nudged the
+        -- window while it resized.
+        when (s.final && s.sizeIt && res == SetOk) $ void (setFrame wid s.rect True False)
+        now <- getMonotonicTime
+        atomically . modifyTVar' a.state $ \st ->
+          if Map.member wid st.current then st {touched = Map.insert wid now st.touched} else st
+        when (res == DeadWindow) (a.dead wid)
+        when (s.final && s.sizeIt && res == SetOk) (checkWidth a wid s.rect)
+        loop
 
 -- | Within half a pixel, as the app will round it.
 sameSize, samePlace :: Rect -> Rect -> Bool
@@ -180,14 +255,14 @@ samePlace a b = round a.x == (round b.x :: Int) && round a.y == (round b.y :: In
 -- | Apps can refuse to shrink a window below their minimum size. Look a
 -- moment after it was given its final size (some apps resize
 -- asynchronously), and only if nothing has moved it since.
-checkWidth :: Animator -> (WindowId -> Double -> IO ()) -> WindowId -> Rect -> IO ()
-checkWidth a tooWide wid r = void . forkIO $ do
+checkWidth :: Animator -> WindowId -> Rect -> IO ()
+checkWidth a wid r = void . forkIO $ do
   threadDelay 250000
   st <- readTVarIO a.state
   let settled = not (Map.member wid st.motions) && fmap (.w) (Map.lookup wid st.current) == Just r.w
   when settled $
     windowFrame wid >>= \case
-      Just actual | actual.w > r.w + 2 -> tooWide wid actual.w
+      Just actual | actual.w > r.w + 2 -> a.tooWide wid actual.w
       _ -> pure ()
 
 -- | Put windows straight into place, with no animation. For shutting down.
@@ -195,16 +270,23 @@ placeNow :: [(WindowId, Rect)] -> IO ()
 placeNow rs = forM_ rs $ \(wid, r) -> setFrame wid r True True
 
 forget :: Animator -> WindowId -> IO ()
-forget a wid = atomically . modifyTVar' a.state $ \st ->
-  st
-    { current = Map.delete wid st.current
-    , motions = Map.delete wid st.motions
-    , touched = Map.delete wid st.touched
-    , shown = Map.delete wid st.shown
-    }
+forget a wid = atomically $ do
+  modifyTVar' a.state $ \st ->
+    st
+      { current = Map.delete wid st.current
+      , motions = Map.delete wid st.motions
+      , touched = Map.delete wid st.touched
+      , shown = Map.delete wid st.shown
+      }
+  boxes <- readTVar a.senders
+  forM_ (Map.lookup wid boxes) (`writeTVar` Stopped)
+  writeTVar a.senders (Map.delete wid boxes)
 
 forgetAll :: Animator -> IO ()
-forgetAll a = atomically (writeTVar a.state (State Map.empty Map.empty Map.empty Map.empty))
+forgetAll a = atomically $ do
+  writeTVar a.state (State Map.empty Map.empty Map.empty Map.empty)
+  readTVar a.senders >>= mapM_ (`writeTVar` Stopped)
+  writeTVar a.senders Map.empty
 
 -- | Record where a window really is after someone else moved it, so the
 -- next layout puts it back.

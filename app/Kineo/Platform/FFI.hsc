@@ -21,12 +21,14 @@ module Kineo.Platform.FFI
   , kn_focus_nothing
   , kn_set_hotkeys
   , kn_window_set_frame
+  , kn_next_frame
+  , kn_frames_idle
   ) where
 
 import Data.Int (Int32)
 import Data.Word (Word32, Word64, Word8)
 import Foreign.C.String (CString)
-import Foreign.C.Types (CBool (..), CInt (..))
+import Foreign.C.Types (CBool (..), CDouble (..), CInt (..))
 import Foreign.Ptr (FunPtr, Ptr, plusPtr)
 import Foreign.Storable (Storable (..))
 
@@ -128,3 +130,5 @@ foreign import ccall safe "kn_window_close" kn_window_close :: Word32 -> IO ()
 foreign import ccall safe "kn_focus_nothing" kn_focus_nothing :: IO ()
 foreign import ccall safe "kn_set_hotkeys" kn_set_hotkeys :: Ptr CHotkey -> CInt -> IO ()
 foreign import ccall safe "kn_window_set_frame" kn_window_set_frame :: Word32 -> Ptr CRect -> Int32 -> IO CInt
+foreign import ccall safe "kn_next_frame" kn_next_frame :: IO CDouble
+foreign import ccall safe "kn_frames_idle" kn_frames_idle :: IO ()

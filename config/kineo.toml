@@ -14,7 +14,7 @@ default-width = 0.5                   # width of newly opened windows
 
 [animation]
 duration-ms = 200   # 0 turns animation off
-fps = 120
+fps = 120           # at most; frames follow the display's refresh rate
 easing = "ease-out" # "linear", "ease-out" or "ease-in-out"
 
 # Key bindings merge with the defaults below; bind a chord to "none" to drop one.

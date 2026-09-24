@@ -7,7 +7,11 @@
 #import <AppKit/AppKit.h>
 #import <ApplicationServices/ApplicationServices.h>
 #import <Carbon/Carbon.h>
+#import <CoreVideo/CoreVideo.h>
 #import <dlfcn.h>
+#import <mach/mach_time.h>
+#import <pthread.h>
+#import <sys/time.h>
 
 #include "kineo.h"
 
@@ -506,6 +510,74 @@ int kn_scan_windows(uint32_t *out, int max) {
     });
     return n;
 }
+
+// Frame pacing ----------------------------------------------------------------
+
+// CVDisplayLink is deprecated in favour of NSScreen.displayLink, but that one
+// fires on a run loop, and the main one is busy with notifications.
+#pragma clang diagnostic push
+#pragma clang diagnostic ignored "-Wdeprecated-declarations"
+
+static pthread_mutex_t g_frame_lock = PTHREAD_MUTEX_INITIALIZER;
+static pthread_cond_t g_frame_cond = PTHREAD_COND_INITIALIZER;
+static CVDisplayLinkRef g_link;  // under g_frame_lock
+static uint64_t g_frame_count;    // under g_frame_lock
+static uint64_t g_frame_output;   // host time the latest frame is shown at, under g_frame_lock
+
+static CVReturn on_frame(CVDisplayLinkRef link, const CVTimeStamp *now, const CVTimeStamp *output,
+                         CVOptionFlags flags, CVOptionFlags *flagsOut, void *ctx) {
+    (void)link, (void)now, (void)flags, (void)flagsOut, (void)ctx;
+    pthread_mutex_lock(&g_frame_lock);
+    g_frame_count++;
+    g_frame_output = output->hostTime;
+    pthread_cond_broadcast(&g_frame_cond);
+    pthread_mutex_unlock(&g_frame_lock);
+    return kCVReturnSuccess;
+}
+
+static double host_seconds(int64_t ticks) {
+    static mach_timebase_info_data_t tb;
+    if (!tb.denom) mach_timebase_info(&tb);
+    return (double)ticks * tb.numer / tb.denom / 1e9;
+}
+
+double kn_next_frame(void) {
+    pthread_mutex_lock(&g_frame_lock);
+    if (!g_link) {
+        if (CVDisplayLinkCreateWithCGDisplay(CGMainDisplayID(), &g_link) != kCVReturnSuccess) g_link = NULL;
+        if (g_link) CVDisplayLinkSetOutputCallback(g_link, on_frame, NULL);
+    }
+    if (!g_link) {
+        pthread_mutex_unlock(&g_frame_lock);
+        return -1;
+    }
+    if (!CVDisplayLinkIsRunning(g_link)) CVDisplayLinkStart(g_link);
+    // Wait for a fresh frame, but not forever: a sleeping display stops them.
+    uint64_t seen = g_frame_count;
+    struct timeval tv;
+    gettimeofday(&tv, NULL);
+    struct timespec deadline = {tv.tv_sec, tv.tv_usec * 1000 + 50 * 1000000};
+    if (deadline.tv_nsec >= 1000000000) deadline.tv_sec++, deadline.tv_nsec -= 1000000000;
+    while (g_frame_count == seen)
+        if (pthread_cond_timedwait(&g_frame_cond, &g_frame_lock, &deadline)) break;
+    double ahead = g_frame_count == seen ? -1 : fmax(0, host_seconds((int64_t)(g_frame_output - mach_absolute_time())));
+    pthread_mutex_unlock(&g_frame_lock);
+    return ahead;
+}
+
+void kn_frames_idle(void) {
+    pthread_mutex_lock(&g_frame_lock);
+    CVDisplayLinkRef link = g_link;
+    g_link = NULL;
+    pthread_mutex_unlock(&g_frame_lock);
+    // Outside the lock: stopping waits for a callback in progress, which takes it.
+    if (link) {
+        CVDisplayLinkStop(link);
+        CVDisplayLinkRelease(link);
+    }
+}
+
+#pragma clang diagnostic pop
 
 // Lifecycle -------------------------------------------------------------------
 

@@ -90,6 +90,7 @@ executable kineo
     ApplicationServices
     Carbon
     CoreGraphics
+    CoreVideo
 
   ghc-options:      -threaded -rtsopts
 

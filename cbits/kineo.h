@@ -80,3 +80,11 @@ enum { KN_SET_POSITION = 1, KN_SET_SIZE = 2 };
 // Result codes for kn_window_set_frame.
 enum { KN_OK = 0, KN_UNKNOWN_WINDOW = 1, KN_DEAD_WINDOW = 2, KN_FAILED = 3 };
 int kn_window_set_frame(uint32_t wid, const kn_rect *r, int32_t what);
+
+// Frame pacing, from the main display's refresh. kn_next_frame blocks until
+// the display starts on its next frame and returns how many seconds from
+// now that frame will be on screen, or -1 if there is no display link or
+// no frame came within 50 ms.
+// kn_frames_idle stops the display link until kn_next_frame is next called.
+double kn_next_frame(void);
+void kn_frames_idle(void);

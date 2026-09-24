@@ -16,6 +16,8 @@ module Kineo.Platform
   , focusNothing
   , setHotkeys
   , setFrame
+  , nextFrame
+  , framesIdle
   ) where
 
 import Data.ByteString qualified as BS
@@ -175,3 +177,13 @@ setFrame wid (Rect x y w h) position size = alloca $ \p -> do
 
 rect :: CRect -> Rect
 rect (CRect x y w h) = Rect x y w h
+
+-- | Wait for the display to start on its next frame; returns how many
+-- seconds from now that frame will be on screen. 'Nothing' if there is no
+-- display to follow.
+nextFrame :: IO (Maybe Double)
+nextFrame = (\t -> if t < 0 then Nothing else Just (realToFrac t)) <$> kn_next_frame
+
+-- | Nothing is animating: stop listening for display frames.
+framesIdle :: IO ()
+framesIdle = kn_frames_idle
