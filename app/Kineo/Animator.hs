@@ -238,7 +238,7 @@ sender a wid box = loop
         atomically . modifyTVar' a.state $ \st ->
           if Map.member wid st.current then st {touched = Map.insert wid now st.touched} else st
         when (res == DeadWindow) (a.dead wid)
-        when (s.final && s.sizeIt && res == SetOk) (checkWidth a wid s.rect)
+        when (s.sizeIt && res == SetOk) (checkWidth a wid s.rect)
         loop
 
 -- | Within half a pixel, as the app will round it.
@@ -247,13 +247,15 @@ sameSize a b = abs (a.w - b.w) < 0.5 && abs (a.h - b.h) < 0.5
 samePlace a b = round a.x == (round b.x :: Int) && round a.y == (round b.y :: Int)
 
 -- | Apps can refuse to shrink a window below their minimum size. Look a
--- moment after it was given its final size (some apps resize
--- asynchronously), and only if nothing has moved it since.
+-- moment after every resize (some apps resize asynchronously), unless it
+-- has been given another width since. Moving it doesn't matter, and
+-- waiting for the motion to end would miss windows whose motion was
+-- redirected, as they aren't resized again.
 checkWidth :: Animator -> WindowId -> Rect -> IO ()
 checkWidth a wid r = void . forkIO $ do
   threadDelay 250000
   st <- readTVarIO a.state
-  let settled = not (Map.member wid st.flights) && fmap (.w) (Map.lookup wid st.current) == Just r.w
+  let settled = fmap (.w) (Map.lookup wid st.current) == Just r.w
   when settled $
     windowFrame wid >>= \case
       Just actual | actual.w > r.w + 2 -> a.tooWide wid actual.w
