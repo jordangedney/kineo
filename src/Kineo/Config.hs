@@ -69,7 +69,7 @@ defaultConfig =
     , focusMode = Reveal
     , widths = [0.3333, 0.5, 0.6667, 1]
     , defaultWidth = 1 / 2
-    , animation = Animation {durationMs = 250, fps = 120, easing = Spring}
+    , animation = Animation {durationMs = 333, fps = 120, easing = Spring}
     , bindings = defaultBindings
     , rules =
         [ Rule {app = Just "com.apple.systempreferences", titleContains = Nothing, float = True, ruleWidth = Nothing}
