@@ -33,6 +33,8 @@ import GHC.Clock (getMonotonicTime)
 import Kineo.Config (Animation (..))
 import Kineo.Geometry (Rect (..), approxEq)
 import Kineo.Layout (Placement (..))
+import Kineo.Log (Logger)
+import Kineo.Log qualified as Log
 import Kineo.Motion (Motion (..))
 import Kineo.Motion qualified as Motion
 import Kineo.Platform (SetResult (..), framesIdle, nextFrame, setFrame, windowFrame)
@@ -79,13 +81,14 @@ data Animator = Animator
   , senders :: TVar (Map WindowId (TVar Mailbox))
   , dead :: WindowId -> IO ()
   , tooWide :: WindowId -> Double -> IO ()
+  , logger :: Logger
   }
 
 -- | Start the animation thread. @dead@ is told about windows that turned
 -- out to be gone when we tried to move them, and @tooWide@ about windows
 -- whose app kept them wider than asked, with the width they kept.
-start :: Animation -> (WindowId -> IO ()) -> (WindowId -> Double -> IO ()) -> IO Animator
-start cfg dead tooWide = do
+start :: Logger -> Animation -> (WindowId -> IO ()) -> (WindowId -> Double -> IO ()) -> IO Animator
+start lg cfg dead tooWide = do
   a <-
     Animator
       <$> newTVarIO emptyState
@@ -93,6 +96,7 @@ start cfg dead tooWide = do
       <*> newTVarIO Map.empty
       <*> pure dead
       <*> pure tooWide
+      <*> pure lg
   _ <- forkIO (run a)
   pure a
 
@@ -144,6 +148,8 @@ run a = go 0
         atomically (readTVar a.state >>= \st -> when (Map.null st.flights) retry)
       cfg <- readTVarIO a.config
       shown <- nextShown (1 / fromIntegral (max 1 cfg.fps)) lastShown
+      when (not idle && shown - lastShown > 0.05) $
+        Log.debug a.logger ("animation: frame " ++ ms (shown - lastShown) ++ " after the last")
       frame a cfg shown
       go shown
 
@@ -230,7 +236,12 @@ sender a wid box = loop
             Stopped -> pure Nothing
             Pending s -> Just s <$ writeTVar box Idle
       forM_ next $ \s -> do
+        t0 <- getMonotonicTime
         res <- setFrame wid s.rect True s.sizeIt
+        t1 <- getMonotonicTime
+        when (t1 - t0 > 0.05) $
+          Log.debug a.logger $
+            "animation: window " ++ show wid ++ (if s.sizeIt then " resize" else " move") ++ " took " ++ ms (t1 - t0) ++ " (" ++ show res ++ ")"
         -- After a final resize, position again: an app may have nudged the
         -- window while it resized.
         when (s.final && s.sizeIt && res == SetOk) $ void (setFrame wid s.rect True False)
@@ -240,6 +251,9 @@ sender a wid box = loop
         when (res == DeadWindow) (a.dead wid)
         when (s.sizeIt && res == SetOk) (checkWidth a wid s.rect)
         loop
+
+ms :: Double -> String
+ms t = show (round (t * 1000) :: Int) ++ " ms"
 
 -- | Within half a pixel, as the app will round it.
 sameSize, samePlace :: Rect -> Rect -> Bool

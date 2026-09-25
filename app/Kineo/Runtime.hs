@@ -90,7 +90,7 @@ run lg path = do
 
   q <- newTQueueIO
   let enqueue = atomically . writeTQueue q
-  anim <- Animator.start cfg.animation (enqueue . Raw . RawWindowDestroyed) (\wid px -> enqueue (TooWide wid px))
+  anim <- Animator.start lg cfg.animation (enqueue . Raw . RawWindowDestroyed) (\wid px -> enqueue (TooWide wid px))
   env <- Env lg path <$> newIORef cfg <*> pure q <*> pure anim <*> newIORef IntMap.empty <*> newIORef 0
   registerHotkeys env cfg
   showCheatsheet cfg
