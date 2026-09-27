@@ -26,6 +26,7 @@ module Kineo.Platform.FFI
   , kn_next_frame
   , kn_frames_idle
   , kh_configure
+  , kn_set_paused
   ) where
 
 import Data.Int (Int32)
@@ -138,3 +139,4 @@ foreign import ccall safe "kn_window_set_frame" kn_window_set_frame :: Word32 ->
 foreign import ccall safe "kn_next_frame" kn_next_frame :: IO CDouble
 foreign import ccall safe "kn_frames_idle" kn_frames_idle :: IO ()
 foreign import ccall safe "kh_configure" kh_configure :: CBool -> CBool -> IO CBool
+foreign import ccall safe "kn_set_paused" kn_set_paused :: CBool -> IO ()

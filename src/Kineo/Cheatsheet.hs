@@ -64,7 +64,7 @@ groups =
   , ("Width", \case CycleWidth -> True; CycleWidthBack -> True; ToggleFullWidth -> True; CenterColumn -> True; _ -> False)
   , ("Stack", \case Consume -> True; Expel -> True; _ -> False)
   , ("Windows", \case ToggleFloat -> True; CloseWindow -> True; Exec _ -> True; _ -> False)
-  , ("Kineo", \case Retile -> True; ReloadConfig -> True; Quit -> True; _ -> False)
+  , ("Kineo", \case Retile -> True; ReloadConfig -> True; TogglePause -> True; Quit -> True; _ -> False)
   ]
 
 -- | Commands in the order 'allCommands' lists them; @exec@ last.
@@ -115,6 +115,7 @@ describe = \case
   CloseWindow -> "close"
   Retile -> "retile"
   ReloadConfig -> "reload config"
+  TogglePause -> "pause / carry on"
   Quit -> "quit"
   Exec s -> maybe (shorten s) ("open " ++) (appName s)
   where

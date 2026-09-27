@@ -1,7 +1,6 @@
 -- | A typed, Haskell-shaped view of the macOS layer in cbits/.
 module Kineo.Platform
   ( RawEvent (..)
-  , MenuItem (..)
   , SetResult (..)
   , accessibilityTrusted
   , initialise
@@ -22,6 +21,7 @@ module Kineo.Platform
   , nextFrame
   , framesIdle
   , setHyper
+  , showPaused
   ) where
 
 import Data.ByteString qualified as BS
@@ -30,13 +30,11 @@ import Data.Text.Encoding (decodeUtf8Lenient)
 import Foreign.Marshal.Alloc (alloca)
 import Foreign.Marshal.Array (allocaArray, peekArray, withArrayLen)
 import Foreign.Storable (peek, poke)
+import Kineo.Command (Command (..))
 import Kineo.Core (Display (..), Pid, SpaceId, WindowInfo (..))
 import Kineo.Geometry (Rect (..))
 import Kineo.Platform.FFI
 import Kineo.Strip (WindowId)
-
-data MenuItem = MenuReloadConfig | MenuQuit
-  deriving stock (Eq, Show)
 
 -- | Notifications from macOS, as delivered on the main thread.
 data RawEvent
@@ -51,8 +49,8 @@ data RawEvent
   | RawSpaceChanged
   | RawDisplaysChanged
   | RawHotkey Int
-  | -- | An item of the menu bar icon's menu.
-    RawMenu MenuItem
+  | -- | A click on the menu bar icon, or an item of its menu.
+    RawMenu Command
   deriving stock (Eq, Show)
 
 decode :: Int32 -> Int32 -> WindowId -> Maybe RawEvent
@@ -70,8 +68,9 @@ decode kind pid arg = case kind of
   11 -> Just RawSpaceChanged
   12 -> Just RawDisplaysChanged
   13 -> Just (RawHotkey (fromIntegral arg))
-  14 | arg == 0 -> Just (RawMenu MenuReloadConfig)
-     | arg == 1 -> Just (RawMenu MenuQuit)
+  14 | arg == 0 -> Just (RawMenu ReloadConfig)
+     | arg == 1 -> Just (RawMenu Quit)
+     | arg == 2 -> Just (RawMenu TogglePause)
   _ -> Nothing
 
 -- | Is Kineo allowed to use the Accessibility API? With @prompt@, macOS
@@ -210,6 +209,10 @@ framesIdle = kn_frames_idle
 
 -- | Caps Lock as hyper: on or off, and whether a tap alone sends Escape.
 -- False if it could not be turned on.
+-- | Dim the menu bar icon while paused.
+showPaused :: Bool -> IO ()
+showPaused p = kn_set_paused (if p then 1 else 0)
+
 setHyper :: Bool -> Bool -> IO Bool
 setHyper on escape = (/= 0) <$> kh_configure (fromBool on) (fromBool escape)
   where

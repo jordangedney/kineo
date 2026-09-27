@@ -26,6 +26,9 @@ data Command
   | CloseWindow
   | Retile
   | ReloadConfig
+  | -- | Stop managing windows, bringing parked ones back on screen; again
+    -- to carry on.
+    TogglePause
   | Quit
   | -- | Run a shell command, such as opening a terminal. Written
     -- @exec \<command\>@; accepted from key bindings but not from the socket.
@@ -37,7 +40,7 @@ allCommands =
   map Focus dirs
     ++ [FocusFirst, FocusLast]
     ++ map Move dirs
-    ++ [CycleWidth, CycleWidthBack, ToggleFullWidth, CenterColumn, Consume, Expel, ToggleFloat, CloseWindow, Retile, ReloadConfig, Quit]
+    ++ [CycleWidth, CycleWidthBack, ToggleFullWidth, CenterColumn, Consume, Expel, ToggleFloat, CloseWindow, Retile, ReloadConfig, TogglePause, Quit]
   where
     dirs = [minBound .. maxBound]
 
@@ -57,6 +60,7 @@ commandName = \case
   CloseWindow -> "close"
   Retile -> "retile"
   ReloadConfig -> "reload-config"
+  TogglePause -> "toggle-pause"
   Quit -> "quit"
   Exec s -> "exec " ++ s
   where

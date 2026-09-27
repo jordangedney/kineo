@@ -588,9 +588,24 @@ void kn_frames_idle(void) {
 @property(strong) NSStatusItem *item;
 @property(strong) NSMenuItem *login;
 @property(strong) NSMenuItem *access;
+@property(strong) NSMenu *menu;
 @end
 
 @implementation KNMenu
+
+// A click pauses Kineo or carries on; a right-click (or ctrl-click) opens
+// the menu. So does any click while Kineo is still waiting for access.
+- (void)clicked:(id)sender {
+    (void)sender;
+    NSEvent *e = NSApp.currentEvent;
+    if (!g_emit || e.type == NSEventTypeRightMouseUp || (e.modifierFlags & NSEventModifierFlagControl)) {
+        self.item.menu = self.menu;
+        [self.item.button performClick:nil];
+        self.item.menu = nil;
+    } else {
+        emit(KN_MENU, 0, KN_MENU_TOGGLE_PAUSE);
+    }
+}
 
 - (void)reload:(id)sender {
     (void)sender;
@@ -665,10 +680,24 @@ static void add_status_item(void) {
     item = [menu addItemWithTitle:@"Quit Kineo" action:@selector(quit:) keyEquivalent:@""];
     item.target = g_menu;
 
+    g_menu.menu = menu;
     g_menu.item = [NSStatusBar.systemStatusBar statusItemWithLength:NSSquareStatusItemLength];
-    g_menu.item.button.image = status_icon(@"rectangle.split.3x1");
-    g_menu.item.menu = menu;
+    NSStatusBarButton *button = g_menu.item.button;
+    button.image = status_icon(@"rectangle.split.3x1");
+    button.toolTip = @"Kineo: click to pause, right-click for more";
+    button.target = g_menu;
+    button.action = @selector(clicked:);
+    [button sendActionOn:NSEventMaskLeftMouseUp | NSEventMaskRightMouseUp];
     NSApp.delegate = g_menu;
+}
+
+void kn_set_paused(bool paused) {
+    dispatch_async(dispatch_get_main_queue(), ^{
+        NSStatusBarButton *button = g_menu.item.button;
+        button.appearsDisabled = paused;
+        button.toolTip = paused ? @"Kineo is paused: click to carry on, right-click for more"
+                                : @"Kineo: click to pause, right-click for more";
+    });
 }
 
 bool kn_wait_ax_trusted(double seconds) {

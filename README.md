@@ -41,9 +41,12 @@ nix run github:jordangedney/kineo#install
 ```
 
 Kineo.app is the window manager and the [hyper key](#caps-lock-as-hyper)
-in one process; there is no terminal to keep open. Its menu can reload
-the config, turn on **Open at Login**, and quit. macOS ties Accessibility
-access to the app's signature, so the install signs it with your own
+in one process; there is no terminal to keep open. Click its menu bar
+icon to pause Kineo (parked windows come back on screen and are left
+alone; `kineo send toggle-pause` does the same) and again to carry on.
+Right-click it to reload the config, turn on **Open at Login**, or quit.
+macOS ties Accessibility access to the app's signature, so the install
+signs it with your own
 certificate (the first Developer ID or Apple Development one in your
 keychain, or `$KINEO_SIGN_IDENTITY`): grant access once, and it survives
 reinstalls. Run the install again to update.

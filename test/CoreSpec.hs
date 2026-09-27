@@ -1,7 +1,7 @@
 module CoreSpec (tests) where
 
 import Data.Foldable (toList)
-import Data.List (nub)
+import Data.List (nub, sort)
 import Data.Map.Strict qualified as Map
 import Gen
 import Kineo.Command (Command (..))
@@ -195,6 +195,22 @@ tests =
         let ws = arranged es
         ws @?= nub ws
         length ws @?= 6
+    , testCase "pausing brings parked windows on screen and leaves windows alone after" $ do
+        let evs = open [1 .. 4] ++ [WindowFocused 1, Command TogglePause]
+            (w, es) = run evs
+            parked = [p.window | p <- layoutAll cfg (world (open [1 .. 4] ++ [WindowFocused 1])), not p.onScreen]
+        assertBool "some windows were parked" (not (null parked))
+        w.paused @?= True
+        contains es (ShowPaused True)
+        sort (arranged es) @?= sort parked
+        snd (run (evs ++ [Command (Focus DirRight), WindowResized 1 300, Relayout])) @?= []
+    , testCase "carrying on after a pause lays out every window, new ones too" $ do
+        let (w, es) = run (open [1, 2] ++ [Command TogglePause, WindowAppeared (window 3), WindowGone 1, Command TogglePause])
+        w.paused @?= False
+        order w @?= [[2], [3]]
+        contains es (ShowPaused False)
+        contains es ForgetFrames
+        sort (arranged es) @?= [2, 3]
     , testProperty "invariants hold after any sequence of events" $
         forAll (listOf genStep) $ \steps ->
           let go w [] = invariant w

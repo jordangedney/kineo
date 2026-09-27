@@ -128,6 +128,9 @@ data World = World
   , blankFocus :: Maybe SpaceId
   -- ^ Set while the user is on an empty workspace: the space it belongs to.
   -- No window has focus then.
+  , paused :: Bool
+  -- ^ Windows are left where they are. Kineo still keeps track of them, so
+  -- carrying on lays out the windows there are then.
   }
   deriving stock (Eq, Show)
 
@@ -140,6 +143,7 @@ emptyWorld =
     , hiddenApps = Set.empty
     , focused = Nothing
     , blankFocus = Nothing
+    , paused = False
     }
 
 emptyWorkspace :: Workspace
@@ -186,6 +190,8 @@ data Effect
     ForgetFrames
   | -- | Read the config file again.
     LoadConfig
+  | -- | Kineo was paused (True) or carries on (False).
+    ShowPaused Bool
   | Shutdown
   deriving stock (Eq, Show)
 
@@ -199,12 +205,37 @@ step cfg ev w0 = case ev of
   Command ReloadConfig -> (w0, [LoadConfig])
   Command Quit -> (w0, [Shutdown])
   Command (Exec s) -> (w0, [Spawn s])
+  Command TogglePause
+    | w0.paused ->
+        -- Windows may have been moved by hand meanwhile: move every one.
+        let w = settle cfg w0 {paused = False}
+         in (w, [ShowPaused False, ForgetFrames, Arrange (layoutAll cfg w)])
+    | otherwise ->
+        (w0 {paused = True}, [ShowPaused True, Arrange [Placement wid r True | (wid, r) <- released cfg w0]])
+  _
+    | w0.paused -> (if keepsTrack ev then fst (tidy (fst (update cfg ev w0))) else w0, [])
   Command Retile -> let w = settle cfg w0 in (w, [ForgetFrames, Arrange (layoutAll cfg w)])
   _ ->
     let (w1, effects) = update cfg ev w0
         (w2, moved) = tidy w1
         w3 = settle cfg w2
      in (w3, effects ++ moved ++ [Arrange (layoutAll cfg w3)])
+
+-- | While paused, windows coming and going still count; the user moving,
+-- resizing or giving commands about them doesn't.
+keepsTrack :: Event -> Bool
+keepsTrack = \case
+  WindowAppeared _ -> True
+  WindowGone _ -> True
+  WindowFocused _ -> True
+  WindowMinimized _ _ -> True
+  AppHidden _ _ -> True
+  AppTerminated _ -> True
+  Reconfigured _ _ -> True
+  WindowResized _ _ -> False
+  WindowMinWidth _ _ -> False
+  Command _ -> False
+  Relayout -> False
 
 update :: Config -> Event -> World -> (World, [Effect])
 update cfg ev w = case ev of
@@ -419,6 +450,7 @@ command cfg c w = case c of
   ToggleFloat -> (toggleFloat cfg w, [])
   Retile -> (w, [])
   ReloadConfig -> (w, [])
+  TogglePause -> (w, [])
   Quit -> (w, [])
   where
     vertical dir = dir == DirUp || dir == DirDown

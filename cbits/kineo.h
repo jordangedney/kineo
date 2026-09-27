@@ -57,7 +57,10 @@ enum {
 };
 
 // Items of the menu bar icon's menu.
-enum { KN_MENU_RELOAD_CONFIG = 0, KN_MENU_QUIT = 1 };
+enum { KN_MENU_RELOAD_CONFIG = 0, KN_MENU_QUIT = 1, KN_MENU_TOGGLE_PAUSE = 2 };
+
+// Show the menu bar icon dimmed (paused) or not. Any thread.
+void kn_set_paused(bool paused);
 
 // Called on the main thread. Must return quickly.
 typedef void (*kn_event_fn)(int32_t kind, int32_t pid, uint32_t arg);

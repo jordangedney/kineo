@@ -28,7 +28,7 @@ import Kineo.Geometry (Rect (..))
 import Kineo.Keys (Chord (..), carbonModifiers, renderChord)
 import Kineo.Log (Logger)
 import Kineo.Log qualified as Log
-import Kineo.Platform (MenuItem (..), RawEvent (..))
+import Kineo.Platform (RawEvent (..))
 import Kineo.Platform qualified as Platform
 import Kineo.Remote qualified as Remote
 import Kineo.Strip (WindowId)
@@ -165,8 +165,7 @@ sense env input w = case input of
     RawAppHidden pid h -> pure [AppHidden pid h]
     RawSpaceChanged -> reconfigured
     RawDisplaysChanged -> reconfigured
-    RawMenu MenuReloadConfig -> pure [Command ReloadConfig]
-    RawMenu MenuQuit -> pure [Command Quit]
+    RawMenu c -> pure [Command c]
     RawHotkey i -> do
       keys <- readIORef env.hotkeys
       pure (maybe [] (pure . Command) (IntMap.lookup i keys))
@@ -233,6 +232,9 @@ perform env w = \case
         applyHyper env.logger cfg
         Log.info env.logger "config reloaded"
         pure [Relayout]
+  ShowPaused p -> do
+    Log.info env.logger (if p then "paused" else "carrying on")
+    [] <$ Platform.showPaused p
   Shutdown -> do
     Log.info env.logger "quitting; bringing parked windows back on screen"
     cfg <- readIORef env.config
