@@ -654,6 +654,10 @@ void kn_frames_idle(void) {
 
 static KNMenu *g_menu;
 
+// Template images, so macOS draws them in the menu bar's own colour.
+static NSString *const kIconRunning = @"rectangle.split.3x1.fill";
+static NSString *const kIconPaused = @"rectangle.split.3x1";
+
 static NSImage *status_icon(NSString *symbol) {
     NSImage *icon = [NSImage imageWithSystemSymbolName:symbol accessibilityDescription:@"Kineo"];
     icon.template = YES;
@@ -683,7 +687,7 @@ static void add_status_item(void) {
     g_menu.menu = menu;
     g_menu.item = [NSStatusBar.systemStatusBar statusItemWithLength:NSSquareStatusItemLength];
     NSStatusBarButton *button = g_menu.item.button;
-    button.image = status_icon(@"rectangle.split.3x1");
+    button.image = status_icon(kIconRunning);
     button.toolTip = @"Kineo: click to pause, right-click for more";
     button.target = g_menu;
     button.action = @selector(clicked:);
@@ -694,7 +698,7 @@ static void add_status_item(void) {
 void kn_set_paused(bool paused) {
     dispatch_async(dispatch_get_main_queue(), ^{
         NSStatusBarButton *button = g_menu.item.button;
-        button.appearsDisabled = paused;
+        button.image = status_icon(paused ? kIconPaused : kIconRunning);
         button.toolTip = paused ? @"Kineo is paused: click to carry on, right-click for more"
                                 : @"Kineo: click to pause, right-click for more";
     });
@@ -716,7 +720,7 @@ bool kn_wait_ax_trusted(double seconds) {
         if (e) [NSApp sendEvent:e];
     }
     if (!AXIsProcessTrusted()) return false;
-    g_menu.item.button.image = status_icon(@"rectangle.split.3x1");
+    g_menu.item.button.image = status_icon(kIconRunning);
     return true;
 }
 
