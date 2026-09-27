@@ -587,6 +587,7 @@ void kn_frames_idle(void) {
 @interface KNMenu : NSObject <NSMenuDelegate, NSApplicationDelegate>
 @property(strong) NSStatusItem *item;
 @property(strong) NSMenuItem *login;
+@property(strong) NSMenuItem *access;
 @end
 
 @implementation KNMenu
@@ -598,7 +599,14 @@ void kn_frames_idle(void) {
 
 - (void)quit:(id)sender {
     (void)sender;
+    if (!g_emit) exit(0);  // still waiting for Accessibility access: nothing to put back
     emit(KN_MENU, 0, KN_MENU_QUIT);
+}
+
+- (void)openAccessibility:(id)sender {
+    (void)sender;
+    [NSWorkspace.sharedWorkspace
+        openURL:[NSURL URLWithString:@"x-apple.systempreferences:com.apple.preference.security?Privacy_Accessibility"]];
 }
 
 - (void)toggleLogin:(id)sender {
@@ -615,12 +623,14 @@ void kn_frames_idle(void) {
 // brings parked windows back first. kn_quit ends the process.
 - (NSApplicationTerminateReply)applicationShouldTerminate:(NSApplication *)sender {
     (void)sender;
+    if (!g_emit) return NSTerminateNow;
     emit(KN_MENU, 0, KN_MENU_QUIT);
     return NSTerminateLater;
 }
 
 - (void)menuNeedsUpdate:(NSMenu *)menu {
     (void)menu;
+    self.access.hidden = AXIsProcessTrusted();
     self.login.state = SMAppService.mainAppService.status == SMAppServiceStatusEnabled ? NSControlStateValueOn
                                                                                        : NSControlStateValueOff;
 }
@@ -629,10 +639,21 @@ void kn_frames_idle(void) {
 
 static KNMenu *g_menu;
 
+static NSImage *status_icon(NSString *symbol) {
+    NSImage *icon = [NSImage imageWithSystemSymbolName:symbol accessibilityDescription:@"Kineo"];
+    icon.template = YES;
+    return icon;
+}
+
 static void add_status_item(void) {
+    if (g_menu) return;
     g_menu = [KNMenu new];
     NSMenu *menu = [NSMenu new];
     menu.delegate = g_menu;
+    g_menu.access = [menu addItemWithTitle:@"Allow Accessibility Access…"
+                                    action:@selector(openAccessibility:)
+                             keyEquivalent:@""];
+    g_menu.access.target = g_menu;
     NSMenuItem *item = [menu addItemWithTitle:@"Reload Config" action:@selector(reload:) keyEquivalent:@""];
     item.target = g_menu;
     // Starting at login only makes sense for Kineo.app, not a bare binary.
@@ -645,11 +666,29 @@ static void add_status_item(void) {
     item.target = g_menu;
 
     g_menu.item = [NSStatusBar.systemStatusBar statusItemWithLength:NSSquareStatusItemLength];
-    NSImage *icon = [NSImage imageWithSystemSymbolName:@"rectangle.split.3x1" accessibilityDescription:@"Kineo"];
-    icon.template = YES;
-    g_menu.item.button.image = icon;
+    g_menu.item.button.image = status_icon(@"rectangle.split.3x1");
     g_menu.item.menu = menu;
     NSApp.delegate = g_menu;
+}
+
+bool kn_wait_ax_trusted(double seconds) {
+    if (AXIsProcessTrusted()) return true;
+    // The Cocoa event loop isn't running yet, so pump it here: the menu
+    // bar icon has to work while we wait.
+    static dispatch_once_t once;
+    dispatch_once(&once, ^{
+        add_status_item();
+        [NSApp finishLaunching];
+        g_menu.item.button.image = status_icon(@"exclamationmark.triangle");
+    });
+    NSDate *until = [NSDate dateWithTimeIntervalSinceNow:seconds];
+    while (until.timeIntervalSinceNow > 0) {
+        NSEvent *e = [NSApp nextEventMatchingMask:NSEventMaskAny untilDate:until inMode:NSDefaultRunLoopMode dequeue:YES];
+        if (e) [NSApp sendEvent:e];
+    }
+    if (!AXIsProcessTrusted()) return false;
+    g_menu.item.button.image = status_icon(@"rectangle.split.3x1");
+    return true;
 }
 
 // Lifecycle -------------------------------------------------------------------

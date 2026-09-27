@@ -111,7 +111,7 @@ waitForAccessibility lg = do
   unless trusted $ do
     Log.warn lg "Kineo needs Accessibility access: System Settings > Privacy & Security > Accessibility."
     Log.warn lg "Waiting for permission..."
-    let wait = Platform.accessibilityTrusted False >>= \ok -> unless ok (threadDelay 1000000 >> wait)
+    let wait = Platform.waitForTrust 1 >>= \ok -> unless ok wait
     wait
     Log.info lg "Accessibility access granted"
 

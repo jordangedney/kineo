@@ -10,6 +10,7 @@ module Kineo.Platform.FFI
   , kn_ax_trusted
   , kn_init
   , kn_in_app_bundle
+  , kn_wait_ax_trusted
   , kn_run
   , kn_quit
   , kn_displays
@@ -119,6 +120,7 @@ foreign import ccall "wrapper" wrapEventFn :: EventFn -> IO (FunPtr EventFn)
 foreign import ccall safe "kn_ax_trusted" kn_ax_trusted :: CBool -> IO CBool
 foreign import ccall safe "kn_init" kn_init :: IO ()
 foreign import ccall safe "kn_in_app_bundle" kn_in_app_bundle :: IO CBool
+foreign import ccall safe "kn_wait_ax_trusted" kn_wait_ax_trusted :: CDouble -> IO CBool
 -- 'safe' so the RTS keeps running other Haskell threads while the main
 -- thread sits in the Cocoa run loop, and so callbacks can re-enter Haskell.
 foreign import ccall safe "kn_run" kn_run :: FunPtr EventFn -> IO ()

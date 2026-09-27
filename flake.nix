@@ -92,6 +92,8 @@
                       sleep 0.1
                     done
                   fi
+                  # One still waiting for Accessibility access isn't listening yet.
+                  pkill -f "$dest/Contents/MacOS/kineo" || true
 
                   mkdir -p "$HOME/Applications"
                   rm -rf "$dest"

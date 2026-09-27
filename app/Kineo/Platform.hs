@@ -6,6 +6,7 @@ module Kineo.Platform
   , accessibilityTrusted
   , initialise
   , inAppBundle
+  , waitForTrust
   , runLoop
   , quit
   , displays
@@ -77,6 +78,11 @@ decode kind pid arg = case kind of
 -- shows its permission dialog if not.
 accessibilityTrusted :: Bool -> IO Bool
 accessibilityTrusted prompt = (/= 0) <$> kn_ax_trusted (if prompt then 1 else 0)
+
+-- | Wait up to this many seconds for Accessibility access, keeping the menu
+-- bar icon working. Main thread, before 'runLoop'. True once granted.
+waitForTrust :: Double -> IO Bool
+waitForTrust secs = (/= 0) <$> kn_wait_ax_trusted (realToFrac secs)
 
 -- | Running as Kineo.app, rather than a bare binary from a terminal?
 inAppBundle :: IO Bool

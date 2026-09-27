@@ -64,7 +64,10 @@ typedef void (*kn_event_fn)(int32_t kind, int32_t pid, uint32_t arg);
 
 // Setup. kn_init and kn_run must be called on the main thread.
 bool kn_ax_trusted(bool prompt);
-bool kn_in_app_bundle(void);  // running as Kineo.app rather than a bare binary
+bool kn_in_app_bundle(void);
+// Main thread, before kn_run: keep the menu bar icon working for up to
+// `seconds` while waiting for Accessibility access. Returns whether we have it.
+bool kn_wait_ax_trusted(double seconds);  // running as Kineo.app rather than a bare binary
 void kn_init(void);
 void kn_run(kn_event_fn fn);  // never returns
 void kn_quit(int code);
