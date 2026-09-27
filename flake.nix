@@ -38,6 +38,16 @@
       packages = forAllSystems (pkgs: rec {
         kineo = pkgs.haskell.lib.justStaticExecutables (haskellPackages pkgs).kineo;
         default = kineo;
+
+        # Kineo.app: the window manager and the hyper key in one process,
+        # with a menu bar icon. Signed ad hoc; `nix run .#install` signs it
+        # with your certificate.
+        app = pkgs.runCommand "kineo-app-${kineo.version}" { } ''
+          contents=$out/Applications/Kineo.app/Contents
+          mkdir -p "$contents/MacOS"
+          cp ${kineo}/bin/kineo "$contents/MacOS/kineo"
+          substitute ${./nix/Info.plist} "$contents/Info.plist" --subst-var-by version ${kineo.version}
+        '';
       });
 
       # Both programs come from the one package.
@@ -53,6 +63,47 @@
           kineo = bin "kineo";
           kineo-hyper = bin "kineo-hyper";
           default = kineo;
+
+          # Build Kineo.app, sign it, put it in ~/Applications and start it.
+          # macOS ties Accessibility access to the signature, so it must be
+          # the same certificate every time: $KINEO_SIGN_IDENTITY, or the
+          # first Developer ID or Apple Development one in the keychain.
+          install = {
+            type = "app";
+            program = "${
+              pkgs.writeShellApplication {
+                name = "kineo-install";
+                text = ''
+                  pkg=${self.packages.${pkgs.stdenv.hostPlatform.system}.app}
+                  kineo=${self.packages.${pkgs.stdenv.hostPlatform.system}.kineo}/bin/kineo
+                  dest="$HOME/Applications/Kineo.app"
+                  identity="''${KINEO_SIGN_IDENTITY:-$(/usr/bin/security find-identity -v -p codesigning \
+                    | grep -Eo '"(Developer ID Application|Apple Development): [^"]+"' | head -n 1 | tr -d '"' || true)}"
+                  if [ -z "$identity" ]; then
+                    echo "kineo-install: no code signing certificate found; set KINEO_SIGN_IDENTITY" >&2
+                    exit 1
+                  fi
+
+                  # Only one Kineo runs at a time.
+                  if "$kineo" send quit >/dev/null 2>&1; then
+                    echo "stopping the running Kineo"
+                    for _ in $(seq 50); do
+                      "$kineo" send quit >/dev/null 2>&1 || break
+                      sleep 0.1
+                    done
+                  fi
+
+                  mkdir -p "$HOME/Applications"
+                  rm -rf "$dest"
+                  cp -R "$pkg/Applications/Kineo.app" "$dest"
+                  chmod -R u+w "$dest"
+                  /usr/bin/codesign --force --sign "$identity" "$dest"
+                  echo "installed $dest, signed by $identity"
+                  /usr/bin/open "$dest"
+                '';
+              }
+            }/bin/kineo-install";
+          };
 
           # For hacking: both programs from one terminal, debug logs on.
           # Arguments go to kineo. Quitting kineo also stops kineo-hyper,

@@ -70,10 +70,17 @@ touches the OS is in the executable (`app/`, `cbits/`).
   private symbols (SkyLight, `_AXUIElementGetWindow`) are resolved with
   `dlsym`. `app/Kineo/Platform/FFI.hsc` binds it with hsc2hs offsets.
 - `kineo-hyper` (`hyper/Main.hs`, `cbits/hyper.m`): a separate executable,
-  on purpose, so the keyboard never depends on the window manager. It maps
+  on purpose, so the keyboard never depends on the window manager. Kineo.app
+  (`nix run .#install`: `packages.app` plus `nix/Info.plist`, signed with
+  the user's certificate so the Accessibility grant survives rebuilds) is
+  the exception: there `kineo` links `hyper.m` and runs the hyper key
+  itself (`[hyper]` in the config, only when `kn_in_app_bundle`). The
+  menu bar icon (`add_status_item` in `cbits/kineo.m`) sends `KN_MENU`
+  events. It maps
   Caps Lock → F18 via `IOHIDEventSystemClient` "UserKeyMapping" (restored
   on exit), and an HID-level event tap adds cmd+alt+ctrl to key events while
-  F18 is held. The tap callback must stay pure C and fast; macOS disables
+  F18 is held. The tap runs on its own thread (Kineo's main thread can block
+  on AX calls) and its callback must stay pure C and fast; macOS disables
   slow taps (the callback re-enables on `kCGEventTapDisabledByTimeout`).
   Don't test it by injecting key events: they reach the frontmost app.
 

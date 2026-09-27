@@ -83,7 +83,11 @@ executable kineo
     , time       >=1.12 && <1.15
     , unix       >=2.8 && <2.9
 
-  c-sources:        cbits/kineo.m
+  -- hyper.m too: as Kineo.app, Kineo is its own hyper key.
+  c-sources:
+    cbits/hyper.m
+    cbits/kineo.m
+
   include-dirs:     cbits
   cc-options:       -fobjc-arc -fmodules -Wall
   frameworks:
@@ -92,6 +96,8 @@ executable kineo
     Carbon
     CoreGraphics
     CoreVideo
+    IOKit
+    ServiceManagement
 
   ghc-options:      -threaded -rtsopts
 

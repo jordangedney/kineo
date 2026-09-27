@@ -36,6 +36,11 @@ tests =
         c.layout.gap @?= 20
         c.layout.margin @?= defaultConfig.layout.margin
         c.focusMode @?= Center
+    , testCase "the hyper key can be turned off, or given Escape on a tap" $ do
+        c <- decodes "[hyper]\ncaps-lock = false\n"
+        c.hyper @?= Hyper {capsLock = False, escape = False}
+        e <- decodes "[hyper]\nescape = true\n"
+        e.hyper @?= Hyper {capsLock = True, escape = True}
     , testCase "unknown keys are reported, not silently ignored" $
         case decodeConfig "[layout]\ngapp = 3\n" of
           Right (_, [_]) -> pure ()

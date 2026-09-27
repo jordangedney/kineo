@@ -4,7 +4,7 @@
 module Main (main) where
 
 import Control.Concurrent (threadDelay)
-import Control.Monad (forM_, unless)
+import Control.Monad (forM_, forever, unless)
 import Foreign.C.Types (CBool (..))
 import System.Environment (getArgs)
 import System.Exit (ExitCode (..), exitFailure, exitSuccess)
@@ -13,10 +13,7 @@ import System.Posix.Process (exitImmediately)
 import System.Posix.Signals (Handler (..), installHandler, sigHUP, sigINT, sigTERM)
 
 foreign import ccall safe "kh_trusted" kh_trusted :: CBool -> IO CBool
-foreign import ccall safe "kh_install_mapping" kh_install_mapping :: IO CBool
-foreign import ccall safe "kh_restore_mapping" kh_restore_mapping :: IO ()
-foreign import ccall safe "kh_start_tap" kh_start_tap :: CBool -> IO CBool
-foreign import ccall safe "kh_run" kh_run :: IO ()
+foreign import ccall safe "kh_configure" kh_configure :: CBool -> CBool -> IO CBool
 
 main :: IO ()
 main = do
@@ -39,18 +36,12 @@ main = do
   -- would leave Caps Lock remapped. Restoring before anything was installed
   -- is a no-op.
   forM_ [sigINT, sigTERM, sigHUP] $ \s ->
-    installHandler s (Catch (kh_restore_mapping >> exitImmediately ExitSuccess)) Nothing
-  ok <- kh_install_mapping
-  unless (ok /= 0) $ say "could not remap Caps Lock" >> exitFailure
-
-  tapped <- kh_start_tap (if escape then 1 else 0)
-  unless (tapped /= 0) $ do
-    say "could not create the keyboard event tap"
-    kh_restore_mapping
-    exitFailure
+    installHandler s (Catch (kh_configure 0 0 >> exitImmediately ExitSuccess)) Nothing
+  ok <- kh_configure 1 (if escape then 1 else 0)
+  unless (ok /= 0) $ say "could not remap Caps Lock or create the keyboard event tap" >> exitFailure
 
   say ("Caps Lock is hyper (cmd+alt+ctrl)" ++ (if escape then "; tap it alone for Escape" else ""))
-  kh_run
+  forever (threadDelay maxBound)
 
 say :: String -> IO ()
 say = hPutStrLn stderr . ("kineo-hyper: " ++)

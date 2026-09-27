@@ -9,6 +9,7 @@ module Kineo.Platform.FFI
   , wrapEventFn
   , kn_ax_trusted
   , kn_init
+  , kn_in_app_bundle
   , kn_run
   , kn_quit
   , kn_displays
@@ -23,6 +24,7 @@ module Kineo.Platform.FFI
   , kn_window_set_frame
   , kn_next_frame
   , kn_frames_idle
+  , kh_configure
   ) where
 
 import Data.Int (Int32)
@@ -116,6 +118,7 @@ foreign import ccall "wrapper" wrapEventFn :: EventFn -> IO (FunPtr EventFn)
 
 foreign import ccall safe "kn_ax_trusted" kn_ax_trusted :: CBool -> IO CBool
 foreign import ccall safe "kn_init" kn_init :: IO ()
+foreign import ccall safe "kn_in_app_bundle" kn_in_app_bundle :: IO CBool
 -- 'safe' so the RTS keeps running other Haskell threads while the main
 -- thread sits in the Cocoa run loop, and so callbacks can re-enter Haskell.
 foreign import ccall safe "kn_run" kn_run :: FunPtr EventFn -> IO ()
@@ -132,3 +135,4 @@ foreign import ccall safe "kn_set_hotkeys" kn_set_hotkeys :: Ptr CHotkey -> CInt
 foreign import ccall safe "kn_window_set_frame" kn_window_set_frame :: Word32 -> Ptr CRect -> Int32 -> IO CInt
 foreign import ccall safe "kn_next_frame" kn_next_frame :: IO CDouble
 foreign import ccall safe "kn_frames_idle" kn_frames_idle :: IO ()
+foreign import ccall safe "kh_configure" kh_configure :: CBool -> CBool -> IO CBool

@@ -34,6 +34,22 @@ nix run .#dev        # the same, from a clone
 
 ## Install
 
+As an app with a menu bar icon, in `~/Applications`:
+
+```sh
+nix run github:jordangedney/kineo#install
+```
+
+Kineo.app is the window manager and the [hyper key](#caps-lock-as-hyper)
+in one process; there is no terminal to keep open. Its menu can reload
+the config, turn on **Open at Login**, and quit. macOS ties Accessibility
+access to the app's signature, so the install signs it with your own
+certificate (the first Developer ID or Apple Development one in your
+keychain, or `$KINEO_SIGN_IDENTITY`): grant access once, and it survives
+reinstalls. Run the install again to update.
+
+Or just the command-line programs:
+
 ```sh
 nix profile install github:jordangedney/kineo
 ```
@@ -67,6 +83,9 @@ hold Caps Lock and press a key, and every app sees cmd+alt+ctrl+key. With
 `--escape`, tapping Caps Lock on its own sends Escape. It is a separate
 process from the window manager, so restarting Kineo never takes your
 keyboard with it, and it needs its own Accessibility grant.
+
+Kineo.app does the same itself, set by the `[hyper]` section of the
+config (`caps-lock`, and `escape` for the tap).
 
 It remaps Caps Lock to F18 in the HID layer (like `hidutil`) and puts back
 whatever mapping was there before when it exits. If it is killed with

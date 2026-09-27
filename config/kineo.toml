@@ -18,6 +18,11 @@ fps = 120           # at most; frames follow the display's refresh rate
 easing = "spring"   # "spring" keeps its speed when a new command redirects it;
                     # or "linear", "ease-out", "ease-in-out"
 
+# Kineo.app only; from a terminal, run kineo-hyper instead.
+[hyper]
+caps-lock = true    # Caps Lock is hyper (cmd+alt+ctrl) while Kineo runs
+escape = false      # tapping Caps Lock on its own sends Escape
+
 # Key bindings merge with the defaults below; bind a chord to "none" to drop one.
 # Modifiers: cmd, alt, ctrl, shift, hyper (= cmd+alt+ctrl), meh (= ctrl+alt+shift).
 # `kineo commands` lists every command.

@@ -8,6 +8,7 @@
 #import <ApplicationServices/ApplicationServices.h>
 #import <Carbon/Carbon.h>
 #import <CoreVideo/CoreVideo.h>
+#import <ServiceManagement/ServiceManagement.h>
 #import <dlfcn.h>
 #import <mach/mach_time.h>
 #import <pthread.h>
@@ -579,7 +580,83 @@ void kn_frames_idle(void) {
 
 #pragma clang diagnostic pop
 
+// Menu bar icon -----------------------------------------------------------------
+
+// Menu actions go to Haskell as KN_MENU events, except "Open at Login",
+// which is only about the app bundle and is handled here.
+@interface KNMenu : NSObject <NSMenuDelegate, NSApplicationDelegate>
+@property(strong) NSStatusItem *item;
+@property(strong) NSMenuItem *login;
+@end
+
+@implementation KNMenu
+
+- (void)reload:(id)sender {
+    (void)sender;
+    emit(KN_MENU, 0, KN_MENU_RELOAD_CONFIG);
+}
+
+- (void)quit:(id)sender {
+    (void)sender;
+    emit(KN_MENU, 0, KN_MENU_QUIT);
+}
+
+- (void)toggleLogin:(id)sender {
+    (void)sender;
+    SMAppService *app = SMAppService.mainAppService;
+    NSError *error = nil;
+    if (app.status == SMAppServiceStatusEnabled) [app unregisterAndReturnError:&error];
+    else [app registerAndReturnError:&error];
+    if (error) NSLog(@"kineo: open at login: %@", error.localizedDescription);
+    if (app.status == SMAppServiceStatusRequiresApproval) [SMAppService openSystemSettingsLoginItems];
+}
+
+// Logging out, or `quit app "Kineo"`: quit as the Quit item would, which
+// brings parked windows back first. kn_quit ends the process.
+- (NSApplicationTerminateReply)applicationShouldTerminate:(NSApplication *)sender {
+    (void)sender;
+    emit(KN_MENU, 0, KN_MENU_QUIT);
+    return NSTerminateLater;
+}
+
+- (void)menuNeedsUpdate:(NSMenu *)menu {
+    (void)menu;
+    self.login.state = SMAppService.mainAppService.status == SMAppServiceStatusEnabled ? NSControlStateValueOn
+                                                                                       : NSControlStateValueOff;
+}
+
+@end
+
+static KNMenu *g_menu;
+
+static void add_status_item(void) {
+    g_menu = [KNMenu new];
+    NSMenu *menu = [NSMenu new];
+    menu.delegate = g_menu;
+    NSMenuItem *item = [menu addItemWithTitle:@"Reload Config" action:@selector(reload:) keyEquivalent:@""];
+    item.target = g_menu;
+    // Starting at login only makes sense for Kineo.app, not a bare binary.
+    if (kn_in_app_bundle()) {
+        g_menu.login = [menu addItemWithTitle:@"Open at Login" action:@selector(toggleLogin:) keyEquivalent:@""];
+        g_menu.login.target = g_menu;
+    }
+    [menu addItem:NSMenuItem.separatorItem];
+    item = [menu addItemWithTitle:@"Quit Kineo" action:@selector(quit:) keyEquivalent:@""];
+    item.target = g_menu;
+
+    g_menu.item = [NSStatusBar.systemStatusBar statusItemWithLength:NSSquareStatusItemLength];
+    NSImage *icon = [NSImage imageWithSystemSymbolName:@"rectangle.split.3x1" accessibilityDescription:@"Kineo"];
+    icon.template = YES;
+    g_menu.item.button.image = icon;
+    g_menu.item.menu = menu;
+    NSApp.delegate = g_menu;
+}
+
 // Lifecycle -------------------------------------------------------------------
+
+bool kn_in_app_bundle(void) {
+    return NSBundle.mainBundle.bundleIdentifier != nil;
+}
 
 bool kn_ax_trusted(bool prompt) {
     NSDictionary *opts = @{(__bridge NSString *)kAXTrustedCheckOptionPrompt : @(prompt)};
@@ -632,6 +709,7 @@ void kn_run(kn_event_fn fn) {
                                                     emit(KN_DISPLAYS_CHANGED, 0, 0);
                                                 }];
 
+    add_status_item();
     emit(KN_DISPLAYS_CHANGED, 0, 0);
     for (NSRunningApplication *running in NSWorkspace.sharedWorkspace.runningApplications) observe_app(running, 0);
     NSRunningApplication *front = NSWorkspace.sharedWorkspace.frontmostApplication;

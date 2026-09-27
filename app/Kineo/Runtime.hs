@@ -22,13 +22,13 @@ import Kineo.Animator (Animator)
 import Kineo.Animator qualified as Animator
 import Kineo.Cheatsheet (cheatsheet)
 import Kineo.Command (Command (..), commandName)
-import Kineo.Config (Config (..), decodeConfig, defaultConfig)
+import Kineo.Config (Config (..), Hyper (..), decodeConfig, defaultConfig)
 import Kineo.Core
 import Kineo.Geometry (Rect (..))
 import Kineo.Keys (Chord (..), carbonModifiers, renderChord)
 import Kineo.Log (Logger)
 import Kineo.Log qualified as Log
-import Kineo.Platform (RawEvent (..))
+import Kineo.Platform (MenuItem (..), RawEvent (..))
 import Kineo.Platform qualified as Platform
 import Kineo.Remote qualified as Remote
 import Kineo.Strip (WindowId)
@@ -87,6 +87,7 @@ run lg path = do
         mapM_ (Log.err lg) errs
         pure defaultConfig
   waitForAccessibility lg
+  applyHyper lg cfg
 
   q <- newTQueueIO
   let enqueue = atomically . writeTQueue q
@@ -164,6 +165,8 @@ sense env input w = case input of
     RawAppHidden pid h -> pure [AppHidden pid h]
     RawSpaceChanged -> reconfigured
     RawDisplaysChanged -> reconfigured
+    RawMenu MenuReloadConfig -> pure [Command ReloadConfig]
+    RawMenu MenuQuit -> pure [Command Quit]
     RawHotkey i -> do
       keys <- readIORef env.hotkeys
       pure (maybe [] (pure . Command) (IntMap.lookup i keys))
@@ -227,6 +230,7 @@ perform env w = \case
         writeIORef env.config cfg
         Animator.setConfig env.animator cfg.animation
         registerHotkeys env cfg
+        applyHyper env.logger cfg
         Log.info env.logger "config reloaded"
         pure [Relayout]
   Shutdown -> do
@@ -243,6 +247,14 @@ showCheatsheet cfg = do
   tty <- hIsTerminalDevice stderr
   noColour <- isJust <$> lookupEnv "NO_COLOR"
   when tty $ hPutStr stderr (cheatsheet (not noColour) cfg.bindings) >> hFlush stderr
+
+-- | Kineo.app is its own hyper key. From a terminal, kineo-hyper is.
+applyHyper :: Logger -> Config -> IO ()
+applyHyper lg cfg = do
+  app <- Platform.inAppBundle
+  when app $ do
+    ok <- Platform.setHyper cfg.hyper.capsLock cfg.hyper.escape
+    unless ok $ Log.err lg "could not make Caps Lock a hyper key"
 
 registerHotkeys :: Env -> Config -> IO ()
 registerHotkeys env cfg = do

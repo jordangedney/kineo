@@ -3,6 +3,7 @@
 module Kineo.Config
   ( Config (..)
   , Animation (..)
+  , Hyper (..)
   , Easing (..)
   , Rule (..)
   , defaultConfig
@@ -33,6 +34,7 @@ data Config = Config
   -- ^ Presets for 'CycleWidth', ascending fractions of the usable width.
   , defaultWidth :: Double
   , animation :: Animation
+  , hyper :: Hyper
   , bindings :: Map Chord Command
   , rules :: [Rule]
   }
@@ -47,6 +49,14 @@ data Easing
   | EaseInOut
   | -- | A critically damped spring: keeps its speed when redirected.
     Spring
+  deriving stock (Eq, Show)
+
+-- | Caps Lock as a hyper key (cmd+alt+ctrl) while Kineo runs.
+data Hyper = Hyper
+  { capsLock :: Bool
+  , escape :: Bool
+  -- ^ Tapping Caps Lock on its own sends Escape.
+  }
   deriving stock (Eq, Show)
 
 -- | Per-application behaviour. A rule matches when every field it sets
@@ -70,6 +80,7 @@ defaultConfig =
     , widths = [0.3333, 0.5, 0.6667, 1]
     , defaultWidth = 1 / 2
     , animation = Animation {durationMs = 333, fps = 120, easing = Spring}
+    , hyper = Hyper {capsLock = True, escape = False}
     , bindings = defaultBindings
     , rules =
         [ Rule {app = Just "com.apple.systempreferences", titleContains = Nothing, float = True, ruleWidth = Nothing}
@@ -144,6 +155,7 @@ instance Toml.FromValue FileConfig where
     let d = defaultConfig
     lay <- Toml.optKeyOf "layout" (Toml.parseTableFromValue layoutTable)
     anim <- Toml.optKeyOf "animation" (Toml.parseTableFromValue animationTable)
+    hy <- Toml.optKeyOf "hyper" (Toml.parseTableFromValue hyperTable)
     binds <- Toml.optKeyOf "bindings" bindingsTable
     rs <- Toml.optKeyOf "rules" (Toml.listOf (const (Toml.parseTableFromValue ruleTable)))
     let (params, mode, ws, dw) = fromMaybe (d.layout, d.focusMode, d.widths, d.defaultWidth) lay
@@ -154,6 +166,7 @@ instance Toml.FromValue FileConfig where
         , widths = ws
         , defaultWidth = dw
         , animation = fromMaybe d.animation anim
+        , hyper = fromMaybe d.hyper hy
         , bindings = maybe d.bindings (\b -> Map.mapMaybe id (Map.fromList b `Map.union` fmap Just d.bindings)) binds
         , rules = fromMaybe d.rules rs
         }
@@ -213,6 +226,13 @@ animationTable = do
       , fps = fromMaybe d.fps f
       , easing = fromMaybe d.easing e
       }
+
+hyperTable :: Toml.ParseTable l Hyper
+hyperTable = do
+  let d = defaultConfig.hyper
+  c <- Toml.optKey "caps-lock"
+  e <- Toml.optKey "escape"
+  pure Hyper {capsLock = fromMaybe d.capsLock c, escape = fromMaybe d.escape e}
 
 -- | @"chord" = "command"@ pairs. The command @"none"@ removes a default.
 bindingsTable :: Toml.Value' l -> Toml.Matcher l [(Chord, Maybe Command)]

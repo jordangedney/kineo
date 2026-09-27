@@ -1,9 +1,11 @@
 -- | A typed, Haskell-shaped view of the macOS layer in cbits/.
 module Kineo.Platform
   ( RawEvent (..)
+  , MenuItem (..)
   , SetResult (..)
   , accessibilityTrusted
   , initialise
+  , inAppBundle
   , runLoop
   , quit
   , displays
@@ -18,6 +20,7 @@ module Kineo.Platform
   , setFrame
   , nextFrame
   , framesIdle
+  , setHyper
   ) where
 
 import Data.ByteString qualified as BS
@@ -30,6 +33,9 @@ import Kineo.Core (Display (..), Pid, SpaceId, WindowInfo (..))
 import Kineo.Geometry (Rect (..))
 import Kineo.Platform.FFI
 import Kineo.Strip (WindowId)
+
+data MenuItem = MenuReloadConfig | MenuQuit
+  deriving stock (Eq, Show)
 
 -- | Notifications from macOS, as delivered on the main thread.
 data RawEvent
@@ -44,6 +50,8 @@ data RawEvent
   | RawSpaceChanged
   | RawDisplaysChanged
   | RawHotkey Int
+  | -- | An item of the menu bar icon's menu.
+    RawMenu MenuItem
   deriving stock (Eq, Show)
 
 decode :: Int32 -> Int32 -> WindowId -> Maybe RawEvent
@@ -61,12 +69,18 @@ decode kind pid arg = case kind of
   11 -> Just RawSpaceChanged
   12 -> Just RawDisplaysChanged
   13 -> Just (RawHotkey (fromIntegral arg))
+  14 | arg == 0 -> Just (RawMenu MenuReloadConfig)
+     | arg == 1 -> Just (RawMenu MenuQuit)
   _ -> Nothing
 
 -- | Is Kineo allowed to use the Accessibility API? With @prompt@, macOS
 -- shows its permission dialog if not.
 accessibilityTrusted :: Bool -> IO Bool
 accessibilityTrusted prompt = (/= 0) <$> kn_ax_trusted (if prompt then 1 else 0)
+
+-- | Running as Kineo.app, rather than a bare binary from a terminal?
+inAppBundle :: IO Bool
+inAppBundle = (/= 0) <$> kn_in_app_bundle
 
 -- | Must run on the main thread before anything else.
 initialise :: IO ()
@@ -187,3 +201,10 @@ nextFrame = (\t -> if t < 0 then Nothing else Just (realToFrac t)) <$> kn_next_f
 -- | Nothing is animating: stop listening for display frames.
 framesIdle :: IO ()
 framesIdle = kn_frames_idle
+
+-- | Caps Lock as hyper: on or off, and whether a tap alone sends Escape.
+-- False if it could not be turned on.
+setHyper :: Bool -> Bool -> IO Bool
+setHyper on escape = (/= 0) <$> kh_configure (fromBool on) (fromBool escape)
+  where
+    fromBool b = if b then 1 else 0

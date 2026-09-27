@@ -53,13 +53,18 @@ enum {
     KN_SPACE_CHANGED,     // pid and arg unused
     KN_DISPLAYS_CHANGED,  // pid and arg unused
     KN_HOTKEY,            // arg = index into the last kn_set_hotkeys array
+    KN_MENU,              // arg = one of the KN_MENU_ items below
 };
+
+// Items of the menu bar icon's menu.
+enum { KN_MENU_RELOAD_CONFIG = 0, KN_MENU_QUIT = 1 };
 
 // Called on the main thread. Must return quickly.
 typedef void (*kn_event_fn)(int32_t kind, int32_t pid, uint32_t arg);
 
 // Setup. kn_init and kn_run must be called on the main thread.
 bool kn_ax_trusted(bool prompt);
+bool kn_in_app_bundle(void);  // running as Kineo.app rather than a bare binary
 void kn_init(void);
 void kn_run(kn_event_fn fn);  // never returns
 void kn_quit(int code);
