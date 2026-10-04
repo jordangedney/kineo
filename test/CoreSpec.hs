@@ -173,7 +173,9 @@ tests =
     , testCase "close closes the focused window" $
         snd (run (open [1, 2] ++ [WindowFocused 1, Command CloseWindow])) `contains` Close 1
     , testCase "exec runs its command" $
-        snd (run [Command (Exec "open -a Foo")]) @?= [Spawn "open -a Foo"]
+        snd (run [Command (Exec "open -a Foo")]) @?= [Spawn "open -a Foo" Nothing]
+    , testCase "exec is told who owns the focused window" $
+        snd (run (open [1] ++ [WindowFocused 1, Command (Exec "foo")])) `contains` Spawn "foo" (Just 100)
     , testCase "other workspaces are parked below the display" $ do
         let (_, es) = run (open [1, 2, 3] ++ [WindowFocused 2, Command (Move DirUp)])
             ps = concat [p | Arrange p <- es]

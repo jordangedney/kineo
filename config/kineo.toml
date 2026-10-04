@@ -48,7 +48,8 @@ escape = false      # tapping Caps Lock on its own sends Escape
 "hyper+shift+r" = "reload-config"
 "hyper+shift+q" = "quit"
 "hyper+delete" = "close"         # close the focused window, as its close button would
-# "exec" runs a shell command. This one opens an iTerm window with the
+# "exec" runs a shell command, with $KINEO_FOCUSED_PID set to the process
+# that owns the focused window, if any. This one opens an iTerm window with the
 # "Kineo" profile if there is one: copy config/iterm-profile.json to
 # ~/Library/Application Support/iTerm2/DynamicProfiles/ for no title bar.
 "hyper+return" = "exec osascript -e 'if application \"iTerm\" is running then' -e 'tell application \"iTerm\"' -e 'try' -e 'create window with profile \"Kineo\"' -e 'on error' -e 'create window with default profile' -e 'end try' -e 'end tell' -e 'end if' -e 'tell application \"iTerm\" to activate'"

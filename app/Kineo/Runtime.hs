@@ -33,7 +33,7 @@ import Kineo.Platform qualified as Platform
 import Kineo.Remote qualified as Remote
 import Kineo.Strip (WindowId)
 import System.Directory (doesFileExist, getXdgDirectory, XdgDirectory (..))
-import System.Environment (lookupEnv)
+import System.Environment (getEnvironment, lookupEnv)
 import System.Exit (exitFailure)
 import System.FilePath ((</>))
 import System.IO (hFlush, hIsTerminalDevice, hPutStr, stderr)
@@ -209,9 +209,11 @@ perform env w = \case
   FocusWindow wid -> [] <$ Platform.focusWindow wid
   FocusNothing -> [] <$ Platform.focusNothing
   Close wid -> [] <$ Platform.closeWindow wid
-  Spawn cmd -> do
+  Spawn cmd focusedPid -> do
     Log.debug env.logger ("exec: " ++ cmd)
-    r <- try @SomeException (createProcess (shell cmd) {std_in = NoStream, new_session = True})
+    vars <- getEnvironment
+    let vars' = maybe id (\p -> (("KINEO_FOCUSED_PID", show p) :)) focusedPid vars
+    r <- try @SomeException (createProcess (shell cmd) {std_in = NoStream, new_session = True, env = Just vars'})
     case r of
       Left e -> Log.err env.logger ("exec " ++ cmd ++ ": " ++ displayException e)
       -- Reap it in the background so it never lingers as a zombie.

@@ -184,8 +184,9 @@ data Effect
     FocusNothing
   | -- | Close a window as its close button would.
     Close WindowId
-  | -- | Run a shell command in the background.
-    Spawn String
+  | -- | Run a shell command in the background, telling it which app owns
+    -- the focused window (so a new terminal can open where the last one is).
+    Spawn String (Maybe Pid)
   | -- | Forget cached frames, so the next 'Arrange' moves every window.
     ForgetFrames
   | -- | Read the config file again.
@@ -204,7 +205,7 @@ step :: Config -> Event -> World -> (World, [Effect])
 step cfg ev w0 = case ev of
   Command ReloadConfig -> (w0, [LoadConfig])
   Command Quit -> (w0, [Shutdown])
-  Command (Exec s) -> (w0, [Spawn s])
+  Command (Exec s) -> (w0, [Spawn s (w0.focused >>= \wid -> (.owner) <$> Map.lookup wid w0.windows)])
   Command TogglePause
     | w0.paused ->
         -- Windows may have been moved by hand meanwhile: move every one.
