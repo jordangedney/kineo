@@ -5,6 +5,10 @@ Kineo is a scrolling tiling window manager for macOS, in Haskell (GHC 9.12,
 
 ## Commands
 
+The `Makefile` wraps these (`make build`, `test`, `test-long`, `doctor`,
+`check-config`, `format`, `release`, `install`, `dev`, `clean`) and enters
+the dev shell itself when needed.
+
 ```sh
 nix develop                      # toolchain: ghc 9.12, cabal, HLS, fourmolu
 cabal build                      # library + executable
